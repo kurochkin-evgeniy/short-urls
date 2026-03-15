@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"short-urls/internal/handler"
 	"short-urls/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 type ShortUrlApp struct {
@@ -16,9 +18,10 @@ func NewShortUrlApp() *ShortUrlApp {
 
 func (a *ShortUrlApp) Start() error {
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/{id}", func(w http.ResponseWriter, r *http.Request) { handler.HandleRequest(w, r, a.shortUrlService) })
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { handler.HandleRequest(w, r, a.shortUrlService) })
+	r := gin.Default()
 
-	return http.ListenAndServe(":8080", mux)
+	r.POST("/", gin.WrapH(http.HandlerFunc(handler.HandleRequest(a.shortUrlService))))
+	r.GET("/:id", gin.WrapH(http.HandlerFunc(handler.HandleRequest(a.shortUrlService))))
+
+	return r.Run(":8080")
 }
