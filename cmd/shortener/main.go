@@ -41,8 +41,8 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request) {
 			id := randStringBytesSafe(s.dict)
 
 			s.dict[id] = string(body)
-			responce.Write([]byte("http://localhost:8080/" + id))
 			responce.WriteHeader(http.StatusCreated)
+			responce.Write([]byte("http://localhost:8080/" + id))
 			return
 		}
 	}
