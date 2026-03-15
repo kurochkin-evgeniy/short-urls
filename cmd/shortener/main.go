@@ -56,7 +56,7 @@ func handleRedirectUrl(responce http.ResponseWriter, request *http.Request) {
 	url := s.dict[id]
 	if url != "" {
 		responce.Header().Add("Location", url)
-		responce.WriteHeader(http.StatusMovedPermanently)
+		responce.WriteHeader(http.StatusTemporaryRedirect)
 		return
 	}
 
