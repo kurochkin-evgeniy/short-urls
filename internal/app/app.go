@@ -17,8 +17,8 @@ func NewShortUrlApp() *ShortUrlApp {
 func (a *ShortUrlApp) Start() error {
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/{id}", func(w http.ResponseWriter, r *http.Request) { handler.HandleRequest(w, r, a.shortUrlService) })
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { handler.HandleRequest(w, r, a.shortUrlService) })
+	mux.HandleFunc("/{id}", handler.HandleRequest(a.shortUrlService))
+	mux.HandleFunc("/", handler.HandleRequest(a.shortUrlService))
 
 	return http.ListenAndServe(":8080", mux)
 }
