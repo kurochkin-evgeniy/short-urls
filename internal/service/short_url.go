@@ -7,16 +7,20 @@ import (
 
 type ShortUrlService struct {
 	storage repository.KeyValueStorage
+	baseUrl string
 }
 
-func NewShortUrlService() *ShortUrlService {
-	return &ShortUrlService{storage: repository.NewMapKeyValueStorage()}
+func NewShortUrlService(b string) *ShortUrlService {
+	return &ShortUrlService{
+		storage: repository.NewMapKeyValueStorage(),
+		baseUrl: b,
+	}
 }
 
 func (s *ShortUrlService) CreateShortUrl(url string) string {
 	id := randStringBytesSafe(s.storage)
 	s.storage.WriteValue(id, url)
-	return id
+	return s.baseUrl + "/" + id
 }
 
 func (s *ShortUrlService) ResolveShortUrl(id string) string {

@@ -12,10 +12,10 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 	if ct == "text/plain" {
 		body, err := io.ReadAll(request.Body)
 		if err == nil {
-			id := s.CreateShortUrl(string(body))
+			shortUrl := s.CreateShortUrl(string(body))
 			responce.Header().Set("content-type", "text/plain")
 			responce.WriteHeader(http.StatusCreated)
-			responce.Write([]byte("http://localhost:8080/" + id))
+			responce.Write([]byte(shortUrl))
 			return
 		}
 	}
