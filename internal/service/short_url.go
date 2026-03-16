@@ -18,9 +18,13 @@ func NewShortUrlService(b string) *ShortUrlService {
 }
 
 func (s *ShortUrlService) CreateShortUrl(url string) string {
-	id := randStringBytesSafe(s.storage)
-	s.storage.WriteValue(id, url)
-	return s.baseUrl + "/" + id
+
+	for {
+		id := randStringBytes(6)
+		if s.storage.InsertNewValue(id, url) {
+			return s.baseUrl + "/" + id
+		}
+	}
 }
 
 func (s *ShortUrlService) ResolveShortUrl(id string) string {
@@ -35,13 +39,4 @@ func randStringBytes(n int) string {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
 	return string(b)
-}
-
-func randStringBytesSafe(storage repository.KeyValueStorage) string {
-	for {
-		s := randStringBytes(6)
-		if !storage.HasKey(s) {
-			return s
-		}
-	}
 }
