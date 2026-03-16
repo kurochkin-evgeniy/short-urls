@@ -36,15 +36,14 @@ func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, s *s
 	responce.WriteHeader(http.StatusBadRequest)
 }
 
-func HandleRequest(s *service.ShortUrlService) http.HandlerFunc {
+func HandleRedirectRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
-		switch request.Method {
-		case http.MethodPost:
-			handleCreateShortUrl(responce, request, s)
-		case http.MethodGet:
-			handleRedirectUrl(responce, request, s)
-		default:
-			responce.WriteHeader(http.StatusBadRequest)
-		}
+		handleRedirectUrl(responce, request, s)
+	}
+}
+
+func HandleCreateShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
+	return func(responce http.ResponseWriter, request *http.Request) {
+		handleCreateShortUrl(responce, request, s)
 	}
 }

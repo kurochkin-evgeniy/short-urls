@@ -56,7 +56,7 @@ func Test_handleCreateShortUrl(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, strings.NewReader(tt.body))
 			request.Header.Add("Content-Type", "text/plain")
 			w := httptest.NewRecorder()
-			h := http.HandlerFunc(HandleRequest(s))
+			h := http.HandlerFunc(HandleCreateShortUrRequest(s))
 			h(w, request)
 
 			result := w.Result()
@@ -80,7 +80,7 @@ func Test_handleRedirectUrl400(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
-	h := http.HandlerFunc(HandleRequest(s))
+	h := http.HandlerFunc(HandleRedirectRequest(s))
 	h(w, request)
 
 	result := w.Result()
@@ -96,7 +96,7 @@ func Test_handleRedirectUrl307(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, url, nil)
 	w := httptest.NewRecorder()
-	h := http.HandlerFunc(HandleRequest(s))
+	h := http.HandlerFunc(HandleRedirectRequest(s))
 	h(w, request)
 
 	result := w.Result()
@@ -112,7 +112,7 @@ func Test_handleUnknownRedirectUrl400(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/1234", nil)
 	w := httptest.NewRecorder()
-	h := http.HandlerFunc(HandleRequest(s))
+	h := http.HandlerFunc(HandleRedirectRequest(s))
 	h(w, request)
 
 	result := w.Result()

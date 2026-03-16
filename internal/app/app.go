@@ -6,7 +6,7 @@ import (
 	"short-urls/internal/handler"
 	"short-urls/internal/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
 )
 
 type ShortUrlApp struct {
@@ -24,10 +24,10 @@ func NewShortUrlApp() *ShortUrlApp {
 
 func (a *ShortUrlApp) Start() error {
 
-	r := gin.Default()
+	r := chi.NewRouter()
 
-	r.POST("/", gin.WrapH(http.HandlerFunc(handler.HandleRequest(a.shortUrlService))))
-	r.GET("/:id", gin.WrapH(http.HandlerFunc(handler.HandleRequest(a.shortUrlService))))
+	r.Post("/", handler.HandleCreateShortUrRequest(a.shortUrlService))
+	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
 
-	return r.Run(a.cfg.HostAddr)
+	return http.ListenAndServe(a.cfg.HostAddr, r)
 }
