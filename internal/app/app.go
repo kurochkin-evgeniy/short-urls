@@ -4,7 +4,10 @@ import (
 	"net/http"
 	"short-urls/internal/config"
 	"short-urls/internal/handler"
+	"short-urls/internal/logging"
 	"short-urls/internal/service"
+
+	"short-urls/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -24,8 +27,12 @@ func NewShortUrlApp() *ShortUrlApp {
 
 func (a *ShortUrlApp) Start() error {
 
+	logging.LoggingInit()
+	defer logging.LoggingDone()
+
 	r := chi.NewRouter()
 
+	r.Use(middleware.LoggingMiddleware)
 	r.Post("/", handler.HandleCreateShortUrRequest(a.shortUrlService))
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
 
