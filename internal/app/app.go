@@ -34,6 +34,7 @@ func (a *ShortUrlApp) Start() error {
 
 	r.Use(middleware.LoggingMiddleware)
 	r.Post("/", handler.HandleCreateShortUrRequest(a.shortUrlService))
+	r.Post("/api/shorten", handler.HandleCreateShortUrRequest(a.shortUrlService))
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
 
 	return http.ListenAndServe(a.cfg.HostAddr, r)
