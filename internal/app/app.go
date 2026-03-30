@@ -22,8 +22,7 @@ type ShortUrlApp struct {
 func NewShortUrlApp() *ShortUrlApp {
 	cfg := config.NewConfig()
 	return &ShortUrlApp{
-		shortUrlService: service.NewShortUrlService(cfg),
-		cfg:             cfg,
+		cfg: cfg,
 	}
 }
 
@@ -31,6 +30,8 @@ func (a *ShortUrlApp) Start() error {
 
 	logging.LoggingInit()
 	defer logging.LoggingDone()
+
+	a.shortUrlService = service.NewShortUrlService(a.cfg)
 
 	r := chi.NewRouter()
 

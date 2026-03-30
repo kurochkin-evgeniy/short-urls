@@ -18,10 +18,6 @@ type MapKeyValueStorage struct {
 	permanentFile string
 }
 
-type StorageFile struct {
-	Records []Filerecord
-}
-
 type Filerecord struct {
 	UUID        int    `json:"uuid"`
 	ShortURL    string `json:"short_url"`
@@ -62,18 +58,18 @@ func (a *MapKeyValueStorage) loadFromFile() {
 
 	fileBytes, err := os.ReadFile(a.permanentFile)
 	if err != nil {
-		logging.Sugar.Error(err)
+		logging.Sugar.Infof("Failed ReadFile: Error = %s", err)
 		return
 	}
 
-	var result StorageFile
+	var result []Filerecord
 	err = json.Unmarshal(fileBytes, &result)
 	if err != nil {
-		logging.Sugar.Error(err)
+		logging.Sugar.Infof("Failed Unmarshal: Error = %s", err)
 		return
 	}
 
-	for _, value := range result.Records {
+	for _, value := range result {
 		a.dict[value.ShortURL] = value.OriginalURL
 	}
 
@@ -81,24 +77,24 @@ func (a *MapKeyValueStorage) loadFromFile() {
 
 func (a *MapKeyValueStorage) saveToFile() {
 
-	var result StorageFile
-	result.Records = make([]Filerecord, 0, len(a.dict))
+	//var result StorageFile
+	var records = make([]Filerecord, 0, len(a.dict))
 
 	index := 0
 	for key, value := range a.dict {
-		result.Records = append(result.Records, Filerecord{UUID: index, ShortURL: key, OriginalURL: value})
+		records = append(records, Filerecord{UUID: index, ShortURL: key, OriginalURL: value})
 		index++
 	}
 
-	jsonData, err := json.MarshalIndent(result, "", "  ")
+	jsonData, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
-		logging.Sugar.Error(err)
+		logging.Sugar.Errorf("Failed MarshalIndent: Error = %s", err)
 		return
 	}
 
 	err = os.WriteFile(a.permanentFile, jsonData, 0644)
 	if err != nil {
-		logging.Sugar.Error(err)
+		logging.Sugar.Errorf("Failed WriteFile: Error = %s", err)
 		return
 	}
 
