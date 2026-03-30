@@ -1,6 +1,7 @@
 package app
 
 import (
+	"compress/flate"
 	"net/http"
 	"short-urls/internal/config"
 	"short-urls/internal/handler"
@@ -10,6 +11,7 @@ import (
 	"short-urls/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
+	chi_m "github.com/go-chi/chi/v5/middleware"
 )
 
 type ShortUrlApp struct {
@@ -32,7 +34,12 @@ func (a *ShortUrlApp) Start() error {
 
 	r := chi.NewRouter()
 
+	compressor := chi_m.NewCompressor(flate.DefaultCompression, "/*")
+	r.Use(compressor.Handler)
+
 	r.Use(middleware.LoggingMiddleware)
+	r.Use(middleware.DecompressRequestMiddleware)
+
 	r.Post("/", handler.HandleCreateShortUrRequest(a.shortUrlService))
 	r.Post("/api/shorten", handler.HandleCreateShortUrRequest(a.shortUrlService))
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
