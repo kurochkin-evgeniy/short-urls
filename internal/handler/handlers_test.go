@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"short-urls/internal/config"
 	"short-urls/internal/service"
 	"strings"
 	"testing"
@@ -51,7 +52,7 @@ func Test_handleCreateShortUrl(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			s := service.NewShortUrlService("http://localhost:8080")
+			s := service.NewShortUrlService(&config.Config{})
 
 			request := httptest.NewRequest(http.MethodPost, tt.request, strings.NewReader(tt.body))
 			request.Header.Add("Content-Type", "text/plain")
@@ -76,7 +77,7 @@ func Test_handleCreateShortUrl(t *testing.T) {
 
 func Test_handleRedirectUrl400(t *testing.T) {
 
-	s := service.NewShortUrlService("http://localhost:8080")
+	s := service.NewShortUrlService(&config.Config{})
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -91,7 +92,7 @@ func Test_handleRedirectUrl400(t *testing.T) {
 func Test_handleRedirectUrl307(t *testing.T) {
 
 	const redirectUrl = "my url"
-	s := service.NewShortUrlService("http://localhost:8080")
+	s := service.NewShortUrlService(&config.Config{})
 	url := s.CreateShortUrl(redirectUrl)
 
 	request := httptest.NewRequest(http.MethodGet, url, nil)
@@ -108,7 +109,7 @@ func Test_handleRedirectUrl307(t *testing.T) {
 func Test_handleUnknownRedirectUrl400(t *testing.T) {
 
 	const redirectUrl = "my url"
-	s := service.NewShortUrlService("http://localhost:8080")
+	s := service.NewShortUrlService(&config.Config{})
 
 	request := httptest.NewRequest(http.MethodGet, "/1234", nil)
 	w := httptest.NewRecorder()

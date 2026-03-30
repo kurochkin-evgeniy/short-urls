@@ -56,6 +56,10 @@ func (a *MapKeyValueStorage) GetValue(key string) string {
 
 func (a *MapKeyValueStorage) loadFromFile() {
 
+	if a.permanentFile == "" {
+		return
+	}
+
 	fileBytes, err := os.ReadFile(a.permanentFile)
 	if err != nil {
 		logging.Sugar.Infof("Failed ReadFile: Error = %s", err)
@@ -77,7 +81,10 @@ func (a *MapKeyValueStorage) loadFromFile() {
 
 func (a *MapKeyValueStorage) saveToFile() {
 
-	//var result StorageFile
+	if a.permanentFile == "" {
+		return
+	}
+
 	var records = make([]Filerecord, 0, len(a.dict))
 
 	index := 0
