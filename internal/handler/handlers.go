@@ -1,22 +1,53 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"short-urls/internal/service"
 )
 
+type CreateShortUrlRequest struct {
+	Url string `json:"url,omitempty"`
+}
+
+type CreateShortUrlResponse struct {
+	Result string `json:"result,omitempty"`
+}
+
 func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
 
-	ct := request.Header.Get("content-type")
-	if ct == "text/plain" {
-		body, err := io.ReadAll(request.Body)
-		if err == nil {
-			shortUrl := s.CreateShortUrl(string(body))
-			responce.Header().Set("content-type", "text/plain")
-			responce.WriteHeader(http.StatusCreated)
-			responce.Write([]byte(shortUrl))
-			return
+	body, err := io.ReadAll(request.Body)
+	if err == nil {
+
+		switch request.Header.Get("content-type") {
+		case "text/plain":
+			{
+				shortUrl := s.CreateShortUrl(string(body))
+				responce.Header().Set("content-type", "text/plain")
+				responce.WriteHeader(http.StatusCreated)
+				responce.Write([]byte(shortUrl))
+				return
+			}
+		case "application/json":
+			{
+				var r CreateShortUrlRequest
+				if err := json.Unmarshal(body, &r); err == nil {
+
+					var resp CreateShortUrlResponse
+					resp.Result = s.CreateShortUrl(r.Url)
+
+					respStr, err := json.Marshal(resp)
+					if err != nil {
+						responce.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+
+					responce.Header().Set("content-type", "application/json")
+					responce.WriteHeader(http.StatusCreated)
+					responce.Write(respStr)
+				}
+			}
 		}
 	}
 
