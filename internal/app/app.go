@@ -35,7 +35,7 @@ func (a *ShortUrlApp) Start() error {
 
 	r := chi.NewRouter()
 
-	compressor := chi_m.NewCompressor(flate.DefaultCompression, "/*")
+	compressor := chi_m.NewCompressor(flate.DefaultCompression, "text/html", "application/json")
 	r.Use(compressor.Handler)
 
 	r.Use(middleware.LoggingMiddleware)

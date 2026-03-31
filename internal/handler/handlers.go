@@ -11,7 +11,7 @@ type CreateShortUrlRequest struct {
 	Url string `json:"url,omitempty"`
 }
 
-type CreateShortUrlResponce struct {
+type CreateShortUrlResponse struct {
 	Result string `json:"result,omitempty"`
 }
 
@@ -34,7 +34,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 				var r CreateShortUrlRequest
 				if err := json.Unmarshal(body, &r); err == nil {
 
-					var resp CreateShortUrlResponce
+					var resp CreateShortUrlResponse
 					resp.Result = s.CreateShortUrl(r.Url)
 
 					respStr, err := json.Marshal(resp)
@@ -45,7 +45,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 
 					responce.Header().Set("content-type", "application/json")
 					responce.WriteHeader(http.StatusCreated)
-					responce.Write([]byte(respStr))
+					responce.Write(respStr)
 				}
 			}
 		}

@@ -13,7 +13,7 @@ type KeyValueStorage interface {
 }
 
 type MapKeyValueStorage struct {
-	mu            sync.Mutex
+	mu            sync.RWMutex
 	dict          map[string]string
 	permanentFile string
 }
@@ -49,8 +49,8 @@ func (a *MapKeyValueStorage) InsertNewValue(key string, value string) bool {
 }
 
 func (a *MapKeyValueStorage) GetValue(key string) string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.dict[key]
 }
 
