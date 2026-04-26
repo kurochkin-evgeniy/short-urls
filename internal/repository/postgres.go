@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"errors"
+	"short-urls/internal/logging"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -59,25 +60,35 @@ WHERE short_url = $1`
 }
 
 func runMigrations(db *sql.DB) error {
+	logging.Sugar.Debugw("Preparing embedded migration source")
 	source, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
+		logging.Sugar.Errorw("Failed to initialize migration source", "error", err)
 		return err
 	}
 	defer source.Close()
 
+	logging.Sugar.Debugw("Preparing PostgreSQL migration driver")
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
+		logging.Sugar.Errorw("Failed to initialize PostgreSQL migration driver", "error", err)
 		return err
 	}
 
+	logging.Sugar.Debugw("Creating migration instance")
 	m, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
 	if err != nil {
+		logging.Sugar.Errorw("Failed to initialize migration instance", "error", err)
 		return err
 	}
 	defer m.Close()
 
+	logging.Sugar.Debugw("Applying up migrations")
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		logging.Sugar.Errorw("Failed to apply migrations", "error", err)
 		return err
+	} else if errors.Is(err, migrate.ErrNoChange) {
+		logging.Sugar.Debugw("No migration changes were needed")
 	}
 
 	return nil

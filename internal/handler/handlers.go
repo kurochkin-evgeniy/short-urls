@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"short-urls/internal/logging"
 	"short-urls/internal/service"
 	"time"
 )
@@ -85,18 +86,22 @@ func HandleCreateShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
 func HandlePing(db *sql.DB) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		if db == nil {
+			logging.Sugar.Warnw("Ping requested but database is not configured")
 			responce.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
+		logging.Sugar.Debugw("Checking PostgreSQL health with ping")
 		ctx, cancel := context.WithTimeout(request.Context(), 2*time.Second)
 		defer cancel()
 
 		if err := db.PingContext(ctx); err != nil {
+			logging.Sugar.Errorw("PostgreSQL ping failed", "error", err)
 			responce.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
+		logging.Sugar.Debugw("PostgreSQL ping succeeded")
 		responce.WriteHeader(http.StatusOK)
 	}
 }

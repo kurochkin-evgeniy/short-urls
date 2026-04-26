@@ -63,28 +63,39 @@ func (a *ShortUrlApp) Start() error {
 
 func (a *ShortUrlApp) buildStorage() (repository.KeyValueStorage, *sql.DB, error) {
 	if a.cfg.DatabaseDSN != "" {
+		logging.Sugar.Infow("Using PostgreSQL storage")
+		logging.Sugar.Debugw("Opening PostgreSQL connection")
 		db, err := sql.Open("postgres", a.cfg.DatabaseDSN)
 		if err != nil {
+			logging.Sugar.Errorw("Failed to open PostgreSQL connection", "error", err)
 			return nil, nil, fmt.Errorf("open database: %w", err)
 		}
 
+		logging.Sugar.Debugw("Pinging PostgreSQL")
 		if err := db.Ping(); err != nil {
 			db.Close()
+			logging.Sugar.Errorw("Failed to ping PostgreSQL", "error", err)
 			return nil, nil, fmt.Errorf("ping database: %w", err)
 		}
+		logging.Sugar.Infow("PostgreSQL connection established")
 
+		logging.Sugar.Infow("Running PostgreSQL migrations")
 		storage, err := repository.NewPostgresKeyValueStorage(db)
 		if err != nil {
 			db.Close()
+			logging.Sugar.Errorw("Failed to run PostgreSQL migrations", "error", err)
 			return nil, nil, fmt.Errorf("run migrations: %w", err)
 		}
+		logging.Sugar.Infow("PostgreSQL migrations completed")
 
 		return storage, db, nil
 	}
 
 	if a.cfg.FilePath != "" {
+		logging.Sugar.Infow("Using file storage", "path", a.cfg.FilePath)
 		return repository.NewMapKeyValuePermanentStorage(a.cfg.FilePath), nil, nil
 	}
 
+	logging.Sugar.Infow("Using in-memory storage")
 	return repository.NewMapKeyValueStorage(), nil, nil
 }
