@@ -84,6 +84,11 @@ func HandleCreateShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
 
 func HandlePing(db *sql.DB) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
+		if db == nil {
+			responce.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(request.Context(), 2*time.Second)
 		defer cancel()
 

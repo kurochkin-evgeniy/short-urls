@@ -34,18 +34,18 @@ func (a *ShortUrlApp) Start() error {
 	logging.LoggingInit()
 	defer logging.LoggingDone()
 
-	if a.cfg.DatabaseDSN == "" {
-		return fmt.Errorf("database dsn is empty: set DATABASE_DSN env or -d flag")
-	}
+	var db *sql.DB
+	var err error
+	if a.cfg.DatabaseDSN != "" {
+		db, err = sql.Open("postgres", a.cfg.DatabaseDSN)
+		if err != nil {
+			return fmt.Errorf("open database: %w", err)
+		}
+		defer db.Close()
 
-	db, err := sql.Open("postgres", a.cfg.DatabaseDSN)
-	if err != nil {
-		return fmt.Errorf("open database: %w", err)
-	}
-	defer db.Close()
-
-	if err := db.Ping(); err != nil {
-		return fmt.Errorf("ping database: %w", err)
+		if err := db.Ping(); err != nil {
+			return fmt.Errorf("ping database: %w", err)
+		}
 	}
 
 	a.shortUrlService = service.NewShortUrlService(a.cfg)
