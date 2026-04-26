@@ -92,8 +92,7 @@ func (a *ShortUrlApp) buildStorage() (repository.KeyValueStorage, *sql.DB, error
 		logging.Sugar.Infow("PostgreSQL connection established")
 
 		logging.Sugar.Infow("Running PostgreSQL migrations")
-		storage, err := repository.NewPostgresKeyValueStorage(db)
-		if err != nil {
+		if err := repository.RunPostgresMigrations(a.cfg.DatabaseDSN); err != nil {
 			db.Close()
 			logging.Sugar.Errorw("Failed to run PostgreSQL migrations", "error", err)
 			return nil, nil, fmt.Errorf("run migrations: %w", err)
@@ -107,6 +106,7 @@ func (a *ShortUrlApp) buildStorage() (repository.KeyValueStorage, *sql.DB, error
 		}
 		logging.Sugar.Infow("PostgreSQL is reachable after migrations")
 
+		storage := repository.NewPostgresKeyValueStorage(db)
 		return storage, db, nil
 	}
 

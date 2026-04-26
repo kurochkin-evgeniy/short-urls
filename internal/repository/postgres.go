@@ -18,12 +18,8 @@ type PostgresKeyValueStorage struct {
 	db *sql.DB
 }
 
-func NewPostgresKeyValueStorage(db *sql.DB) (KeyValueStorage, error) {
-	if err := runMigrations(db); err != nil {
-		return nil, err
-	}
-
-	return &PostgresKeyValueStorage{db: db}, nil
+func NewPostgresKeyValueStorage(db *sql.DB) KeyValueStorage {
+	return &PostgresKeyValueStorage{db: db}
 }
 
 func (s *PostgresKeyValueStorage) InsertNewValue(key string, value string) bool {
@@ -92,4 +88,22 @@ func runMigrations(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func RunPostgresMigrations(dsn string) error {
+	logging.Sugar.Debugw("Opening dedicated PostgreSQL connection for migrations")
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		logging.Sugar.Errorw("Failed to open PostgreSQL connection for migrations", "error", err)
+		return err
+	}
+	defer db.Close()
+
+	logging.Sugar.Debugw("Pinging PostgreSQL on migration connection")
+	if err := db.Ping(); err != nil {
+		logging.Sugar.Errorw("Failed to ping PostgreSQL on migration connection", "error", err)
+		return err
+	}
+
+	return runMigrations(db)
 }
