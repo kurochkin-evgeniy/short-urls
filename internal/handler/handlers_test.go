@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -87,6 +88,54 @@ func Test_handleRedirectUrl400(t *testing.T) {
 	result := w.Result()
 
 	assert.Equal(t, 400, result.StatusCode)
+}
+
+func Test_handleCreateBatchShortUrl(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+
+	body := `[
+{"correlation_id":"id1","original_url":"https://example.com/1"},
+{"correlation_id":"id2","original_url":"https://example.com/2"}
+]`
+	request := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
+	request.Header.Add("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h := http.HandlerFunc(HandleCreateBatchShortUrRequest(s))
+	h(w, request)
+
+	result := w.Result()
+	defer result.Body.Close()
+
+	assert.Equal(t, http.StatusCreated, result.StatusCode)
+	assert.Equal(t, "application/json", result.Header.Get("Content-Type"))
+
+	respBody, err := io.ReadAll(result.Body)
+	require.NoError(t, err)
+
+	var resp []BatchShortUrlResponse
+	err = json.Unmarshal(respBody, &resp)
+	require.NoError(t, err)
+	require.Len(t, resp, 2)
+
+	assert.Equal(t, "id1", resp[0].CorrelationID)
+	assert.Equal(t, "id2", resp[1].CorrelationID)
+	assert.True(t, strings.HasPrefix(resp[0].ShortURL, "http://localhost:8080/"))
+	assert.True(t, strings.HasPrefix(resp[1].ShortURL, "http://localhost:8080/"))
+}
+
+func Test_handleCreateBatchShortUrlEmptyBatch(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+
+	request := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("[]"))
+	request.Header.Add("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h := http.HandlerFunc(HandleCreateBatchShortUrRequest(s))
+	h(w, request)
+
+	result := w.Result()
+	defer result.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, result.StatusCode)
 }
 
 func Test_handleRedirectUrl307(t *testing.T) {

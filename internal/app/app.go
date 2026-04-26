@@ -60,6 +60,7 @@ func (a *ShortUrlApp) Start() error {
 
 	r.Post("/", handler.HandleCreateShortUrRequest(a.shortUrlService))
 	r.Post("/api/shorten", handler.HandleCreateShortUrRequest(a.shortUrlService))
+	r.Post("/api/shorten/batch", handler.HandleCreateBatchShortUrRequest(a.shortUrlService))
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
 	r.Get("/ping", handler.HandlePing(db))
 

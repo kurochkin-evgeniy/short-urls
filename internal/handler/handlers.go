@@ -19,6 +19,16 @@ type CreateShortUrlResponse struct {
 	Result string `json:"result,omitempty"`
 }
 
+type BatchShortUrlRequest struct {
+	CorrelationID string `json:"correlation_id"`
+	OriginalURL   string `json:"original_url"`
+}
+
+type BatchShortUrlResponse struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+}
+
 func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
 
 	body, err := io.ReadAll(request.Body)
@@ -58,6 +68,43 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 	responce.WriteHeader(http.StatusBadRequest)
 }
 
+func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var batchReq []BatchShortUrlRequest
+	if err := json.Unmarshal(body, &batchReq); err != nil {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(batchReq) == 0 {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	batchResp := make([]BatchShortUrlResponse, 0, len(batchReq))
+	for _, item := range batchReq {
+		batchResp = append(batchResp, BatchShortUrlResponse{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      s.CreateShortUrl(item.OriginalURL),
+		})
+	}
+
+	respBody, err := json.Marshal(batchResp)
+	if err != nil {
+		responce.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	responce.Header().Set("content-type", "application/json")
+	responce.WriteHeader(http.StatusCreated)
+	responce.Write(respBody)
+}
+
 func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
 
 	id := request.URL.Path[1:]
@@ -80,6 +127,12 @@ func HandleRedirectRequest(s *service.ShortUrlService) http.HandlerFunc {
 func HandleCreateShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleCreateShortUrl(responce, request, s)
+	}
+}
+
+func HandleCreateBatchShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
+	return func(responce http.ResponseWriter, request *http.Request) {
+		handleCreateBatchShortUrl(responce, request, s)
 	}
 }
 
