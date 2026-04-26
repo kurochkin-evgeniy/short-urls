@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
 	"short-urls/internal/service"
+	"time"
 )
 
 type CreateShortUrlRequest struct {
@@ -76,5 +79,19 @@ func HandleRedirectRequest(s *service.ShortUrlService) http.HandlerFunc {
 func HandleCreateShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleCreateShortUrl(responce, request, s)
+	}
+}
+
+func HandlePing(db *sql.DB) http.HandlerFunc {
+	return func(responce http.ResponseWriter, request *http.Request) {
+		ctx, cancel := context.WithTimeout(request.Context(), 2*time.Second)
+		defer cancel()
+
+		if err := db.PingContext(ctx); err != nil {
+			responce.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		responce.WriteHeader(http.StatusOK)
 	}
 }
