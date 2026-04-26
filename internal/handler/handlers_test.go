@@ -76,6 +76,62 @@ func Test_handleCreateShortUrl(t *testing.T) {
 	}
 }
 
+func Test_handleCreateShortUrlConflictTextPlain(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	body := "https://example.com/conflict"
+
+	request1 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	request1.Header.Add("Content-Type", "text/plain")
+	w1 := httptest.NewRecorder()
+	http.HandlerFunc(HandleCreateShortUrRequest(s))(w1, request1)
+	result1 := w1.Result()
+	defer result1.Body.Close()
+	require.Equal(t, http.StatusCreated, result1.StatusCode)
+	firstBody, err := io.ReadAll(result1.Body)
+	require.NoError(t, err)
+
+	request2 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	request2.Header.Add("Content-Type", "text/plain")
+	w2 := httptest.NewRecorder()
+	http.HandlerFunc(HandleCreateShortUrRequest(s))(w2, request2)
+	result2 := w2.Result()
+	defer result2.Body.Close()
+
+	assert.Equal(t, http.StatusConflict, result2.StatusCode)
+	assert.Equal(t, "text/plain", result2.Header.Get("Content-Type"))
+	secondBody, err := io.ReadAll(result2.Body)
+	require.NoError(t, err)
+	assert.Equal(t, string(firstBody), string(secondBody))
+}
+
+func Test_handleCreateShortUrlConflictJSON(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	body := `{"url":"https://example.com/conflict-json"}`
+
+	request1 := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+	request1.Header.Add("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	http.HandlerFunc(HandleCreateShortUrRequest(s))(w1, request1)
+	result1 := w1.Result()
+	defer result1.Body.Close()
+	require.Equal(t, http.StatusCreated, result1.StatusCode)
+	firstBody, err := io.ReadAll(result1.Body)
+	require.NoError(t, err)
+
+	request2 := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+	request2.Header.Add("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	http.HandlerFunc(HandleCreateShortUrRequest(s))(w2, request2)
+	result2 := w2.Result()
+	defer result2.Body.Close()
+
+	assert.Equal(t, http.StatusConflict, result2.StatusCode)
+	assert.Equal(t, "application/json", result2.Header.Get("Content-Type"))
+	secondBody, err := io.ReadAll(result2.Body)
+	require.NoError(t, err)
+	assert.Equal(t, string(firstBody), string(secondBody))
+}
+
 func Test_handleRedirectUrl400(t *testing.T) {
 
 	s := service.NewShortUrlService("", repository.NewMapKeyValueStorage())
@@ -142,9 +198,9 @@ func Test_handleRedirectUrl307(t *testing.T) {
 
 	const redirectUrl = "my url"
 	s := service.NewShortUrlService("", repository.NewMapKeyValueStorage())
-	url := s.CreateShortUrl(redirectUrl)
+	createResult := s.CreateShortUrl(redirectUrl)
 
-	request := httptest.NewRequest(http.MethodGet, url, nil)
+	request := httptest.NewRequest(http.MethodGet, createResult.ShortURL, nil)
 	w := httptest.NewRecorder()
 	h := http.HandlerFunc(HandleRedirectRequest(s))
 	h(w, request)

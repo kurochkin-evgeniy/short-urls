@@ -10,6 +10,11 @@ type ShortUrlService struct {
 	baseUrl string
 }
 
+type CreateShortURLResult struct {
+	ShortURL    string
+	WasInserted bool
+}
+
 func NewShortUrlService(baseURL string, storage repository.KeyValueStorage) *ShortUrlService {
 	return &ShortUrlService{
 		storage: storage,
@@ -17,12 +22,22 @@ func NewShortUrlService(baseURL string, storage repository.KeyValueStorage) *Sho
 	}
 }
 
-func (s *ShortUrlService) CreateShortUrl(url string) string {
+func (s *ShortUrlService) CreateShortUrl(url string) CreateShortURLResult {
 
 	for {
 		id := randStringBytes(6)
-		if s.storage.InsertNewValue(id, url) {
-			return s.baseUrl + "/" + id
+		inserted, existingID := s.storage.InsertNewValue(id, url)
+		if inserted {
+			return CreateShortURLResult{
+				ShortURL:    s.baseUrl + "/" + id,
+				WasInserted: true,
+			}
+		}
+		if existingID != "" {
+			return CreateShortURLResult{
+				ShortURL:    s.baseUrl + "/" + existingID,
+				WasInserted: false,
+			}
 		}
 	}
 }

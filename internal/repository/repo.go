@@ -8,7 +8,7 @@ import (
 )
 
 type KeyValueStorage interface {
-	InsertNewValue(key string, value string) bool
+	InsertNewValue(key string, value string) (bool, string)
 	GetValue(key string) string
 }
 
@@ -35,17 +35,23 @@ func NewMapKeyValuePermanentStorage(path string) KeyValueStorage {
 	return st
 }
 
-func (a *MapKeyValueStorage) InsertNewValue(key string, value string) bool {
+func (a *MapKeyValueStorage) InsertNewValue(key string, value string) (bool, string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	for existingKey, existingValue := range a.dict {
+		if existingValue == value {
+			return false, existingKey
+		}
+	}
+
 	if _, ok := a.dict[key]; ok {
-		return false
+		return false, ""
 	}
 	a.dict[key] = value
 	a.saveToFile()
 
-	return true
+	return true, ""
 }
 
 func (a *MapKeyValueStorage) GetValue(key string) string {

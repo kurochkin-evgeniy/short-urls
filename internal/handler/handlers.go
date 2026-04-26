@@ -37,19 +37,24 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 		switch request.Header.Get("content-type") {
 		case "text/plain":
 			{
-				shortUrl := s.CreateShortUrl(string(body))
+				createResult := s.CreateShortUrl(string(body))
 				responce.Header().Set("content-type", "text/plain")
-				responce.WriteHeader(http.StatusCreated)
-				responce.Write([]byte(shortUrl))
+				if createResult.WasInserted {
+					responce.WriteHeader(http.StatusCreated)
+				} else {
+					responce.WriteHeader(http.StatusConflict)
+				}
+				responce.Write([]byte(createResult.ShortURL))
 				return
 			}
 		case "application/json":
 			{
 				var r CreateShortUrlRequest
 				if err := json.Unmarshal(body, &r); err == nil {
+					createResult := s.CreateShortUrl(r.Url)
 
 					var resp CreateShortUrlResponse
-					resp.Result = s.CreateShortUrl(r.Url)
+					resp.Result = createResult.ShortURL
 
 					respStr, err := json.Marshal(resp)
 					if err != nil {
@@ -58,7 +63,11 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 					}
 
 					responce.Header().Set("content-type", "application/json")
-					responce.WriteHeader(http.StatusCreated)
+					if createResult.WasInserted {
+						responce.WriteHeader(http.StatusCreated)
+					} else {
+						responce.WriteHeader(http.StatusConflict)
+					}
 					responce.Write(respStr)
 				}
 			}
@@ -88,9 +97,10 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 
 	batchResp := make([]BatchShortUrlResponse, 0, len(batchReq))
 	for _, item := range batchReq {
+		createResult := s.CreateShortUrl(item.OriginalURL)
 		batchResp = append(batchResp, BatchShortUrlResponse{
 			CorrelationID: item.CorrelationID,
-			ShortURL:      s.CreateShortUrl(item.OriginalURL),
+			ShortURL:      createResult.ShortURL,
 		})
 	}
 
