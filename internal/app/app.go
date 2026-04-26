@@ -8,6 +8,7 @@ import (
 	"short-urls/internal/config"
 	"short-urls/internal/handler"
 	"short-urls/internal/logging"
+	"short-urls/internal/repository"
 	"short-urls/internal/service"
 
 	"short-urls/internal/middleware"
@@ -34,21 +35,15 @@ func (a *ShortUrlApp) Start() error {
 	logging.LoggingInit()
 	defer logging.LoggingDone()
 
-	var db *sql.DB
-	var err error
-	if a.cfg.DatabaseDSN != "" {
-		db, err = sql.Open("postgres", a.cfg.DatabaseDSN)
-		if err != nil {
-			return fmt.Errorf("open database: %w", err)
-		}
+	storage, db, err := a.buildStorage()
+	if err != nil {
+		return err
+	}
+	if db != nil {
 		defer db.Close()
-
-		if err := db.Ping(); err != nil {
-			return fmt.Errorf("ping database: %w", err)
-		}
 	}
 
-	a.shortUrlService = service.NewShortUrlService(a.cfg)
+	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, storage)
 
 	r := chi.NewRouter()
 
@@ -64,4 +59,32 @@ func (a *ShortUrlApp) Start() error {
 	r.Get("/ping", handler.HandlePing(db))
 
 	return http.ListenAndServe(a.cfg.HostAddr, r)
+}
+
+func (a *ShortUrlApp) buildStorage() (repository.KeyValueStorage, *sql.DB, error) {
+	if a.cfg.DatabaseDSN != "" {
+		db, err := sql.Open("postgres", a.cfg.DatabaseDSN)
+		if err != nil {
+			return nil, nil, fmt.Errorf("open database: %w", err)
+		}
+
+		if err := db.Ping(); err != nil {
+			db.Close()
+			return nil, nil, fmt.Errorf("ping database: %w", err)
+		}
+
+		storage, err := repository.NewPostgresKeyValueStorage(db)
+		if err != nil {
+			db.Close()
+			return nil, nil, fmt.Errorf("run migrations: %w", err)
+		}
+
+		return storage, db, nil
+	}
+
+	if a.cfg.FilePath != "" {
+		return repository.NewMapKeyValuePermanentStorage(a.cfg.FilePath), nil, nil
+	}
+
+	return repository.NewMapKeyValueStorage(), nil, nil
 }

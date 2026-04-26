@@ -2,7 +2,6 @@ package service
 
 import (
 	"math/rand"
-	"short-urls/internal/config"
 	"short-urls/internal/repository"
 )
 
@@ -11,10 +10,10 @@ type ShortUrlService struct {
 	baseUrl string
 }
 
-func NewShortUrlService(c *config.Config) *ShortUrlService {
+func NewShortUrlService(baseURL string, storage repository.KeyValueStorage) *ShortUrlService {
 	return &ShortUrlService{
-		storage: repository.NewMapKeyValuePermanentStorage(c.FilePath),
-		baseUrl: c.BaseUrl,
+		storage: storage,
+		baseUrl: baseURL,
 	}
 }
 
