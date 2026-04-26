@@ -31,20 +31,25 @@ func NewShortUrlApp() *ShortUrlApp {
 }
 
 func (a *ShortUrlApp) Start() error {
-
 	logging.LoggingInit()
 	defer logging.LoggingDone()
+	logging.Sugar.Infow("Starting short URL service", "address", a.cfg.HostAddr, "base_url", a.cfg.BaseUrl)
 
+	logging.Sugar.Debugw("Building storage backend")
 	storage, db, err := a.buildStorage()
 	if err != nil {
+		logging.Sugar.Errorw("Failed to build storage backend", "error", err)
 		return err
 	}
 	if db != nil {
+		logging.Sugar.Debugw("Database connection opened, close deferred")
 		defer db.Close()
 	}
 
+	logging.Sugar.Debugw("Initializing short URL service")
 	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, storage)
 
+	logging.Sugar.Debugw("Configuring HTTP router")
 	r := chi.NewRouter()
 
 	compressor := chi_m.NewCompressor(flate.DefaultCompression, "text/html", "application/json")
@@ -58,7 +63,14 @@ func (a *ShortUrlApp) Start() error {
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
 	r.Get("/ping", handler.HandlePing(db))
 
-	return http.ListenAndServe(a.cfg.HostAddr, r)
+	logging.Sugar.Infow("HTTP server is starting", "address", a.cfg.HostAddr)
+	if err := http.ListenAndServe(a.cfg.HostAddr, r); err != nil {
+		logging.Sugar.Errorw("HTTP server stopped with error", "error", err)
+		return err
+	}
+
+	logging.Sugar.Infow("HTTP server stopped")
+	return nil
 }
 
 func (a *ShortUrlApp) buildStorage() (repository.KeyValueStorage, *sql.DB, error) {
@@ -87,6 +99,13 @@ func (a *ShortUrlApp) buildStorage() (repository.KeyValueStorage, *sql.DB, error
 			return nil, nil, fmt.Errorf("run migrations: %w", err)
 		}
 		logging.Sugar.Infow("PostgreSQL migrations completed")
+		logging.Sugar.Debugw("Pinging PostgreSQL after migrations")
+		if err := db.Ping(); err != nil {
+			db.Close()
+			logging.Sugar.Errorw("Failed to ping PostgreSQL after migrations", "error", err)
+			return nil, nil, fmt.Errorf("ping database after migrations: %w", err)
+		}
+		logging.Sugar.Infow("PostgreSQL is reachable after migrations")
 
 		return storage, db, nil
 	}
