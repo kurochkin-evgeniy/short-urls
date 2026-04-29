@@ -22,6 +22,46 @@ func NewPostgresKeyValueStorage(db *sql.DB) KeyValueStorage {
 	return &PostgresKeyValueStorage{db: db}
 }
 
+func (s *PostgresKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem) ([]BatchInsertResult, error) {
+	const query = `
+WITH inserted AS (
+    INSERT INTO short_urls (short_url, original_url)
+    VALUES ($1, $2)
+    ON CONFLICT (original_url) DO NOTHING
+    RETURNING short_url
+)
+SELECT short_url, true AS inserted
+FROM inserted
+UNION ALL
+SELECT short_url, false AS inserted
+FROM short_urls
+WHERE original_url = $2
+  AND NOT EXISTS (SELECT 1 FROM inserted)
+LIMIT 1`
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	results := make([]BatchInsertResult, 0, len(items))
+	for _, item := range items {
+		var shortURL string
+		var inserted bool
+		if err := tx.QueryRow(query, item.Key, item.Value).Scan(&shortURL, &inserted); err != nil {
+			return nil, err
+		}
+		result := BatchInsertResult{Inserted: inserted}
+		if !inserted {
+			result.ExistingKey = shortURL
+		}
+		results = append(results, result)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
 func (s *PostgresKeyValueStorage) InsertNewValue(key string, value string) (bool, string, error) {
 	const query = `
 WITH inserted AS (

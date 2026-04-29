@@ -45,6 +45,31 @@ func (s *ShortUrlService) CreateShortUrl(url string) (CreateShortURLResult, erro
 	}
 }
 
+func (s *ShortUrlService) CreateBatchShortUrls(urls []string) ([]string, error) {
+	items := make([]repository.BatchInsertItem, 0, len(urls))
+	for _, url := range urls {
+		items = append(items, repository.BatchInsertItem{
+			Key:   randStringBytes(6),
+			Value: url,
+		})
+	}
+	batchResults, err := s.storage.InsertNewValuesBatch(items)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]string, 0, len(batchResults))
+	for i, storageResult := range batchResults {
+		shortID := items[i].Key
+		if !storageResult.Inserted && storageResult.ExistingKey != "" {
+			shortID = storageResult.ExistingKey
+		}
+		results = append(results,
+			s.baseUrl+"/"+shortID,
+		)
+	}
+	return results, nil
+}
+
 func (s *ShortUrlService) ResolveShortUrl(id string) string {
 	return s.storage.GetValue(id)
 }

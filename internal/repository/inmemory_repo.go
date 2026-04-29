@@ -9,7 +9,17 @@ import (
 
 type KeyValueStorage interface {
 	InsertNewValue(key string, value string) (bool, string, error)
+	InsertNewValuesBatch(items []BatchInsertItem) ([]BatchInsertResult, error)
 	GetValue(key string) string
+}
+
+type BatchInsertItem struct {
+	Key   string
+	Value string
+}
+type BatchInsertResult struct {
+	Inserted    bool
+	ExistingKey string
 }
 
 type MapKeyValueStorage struct {
@@ -54,6 +64,36 @@ func (a *MapKeyValueStorage) InsertNewValue(key string, value string) (bool, str
 	}
 
 	return true, "", nil
+}
+
+func (a *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem) ([]BatchInsertResult, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	results := make([]BatchInsertResult, 0, len(items))
+	for _, item := range items {
+		inserted := false
+		existingKey := ""
+		for currentKey, currentValue := range a.dict {
+			if currentValue == item.Value {
+				existingKey = currentKey
+				break
+			}
+		}
+		if existingKey == "" {
+			if _, exists := a.dict[item.Key]; !exists {
+				a.dict[item.Key] = item.Value
+				inserted = true
+			}
+		}
+		results = append(results, BatchInsertResult{
+			Inserted:    inserted,
+			ExistingKey: existingKey,
+		})
+	}
+	if err := a.saveToFile(); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 func (a *MapKeyValueStorage) GetValue(key string) string {

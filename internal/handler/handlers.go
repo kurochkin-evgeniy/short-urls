@@ -105,17 +105,22 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 		return
 	}
 
-	batchResp := make([]BatchShortUrlResponse, 0, len(batchReq))
+	urls := make([]string, 0, len(batchReq))
 	for _, item := range batchReq {
-		createResult, err := s.CreateShortUrl(item.OriginalURL)
-		if err != nil {
-			logging.Sugar.Errorw("Failed to create short url in batch", "error", err)
-			responce.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		urls = append(urls, item.OriginalURL)
+	}
+
+	createResults, err := s.CreateBatchShortUrls(urls)
+	if err != nil {
+		logging.Sugar.Errorw("Failed to create batch short urls", "error", err)
+		responce.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	batchResp := make([]BatchShortUrlResponse, 0, len(batchReq))
+	for i, item := range batchReq {
 		batchResp = append(batchResp, BatchShortUrlResponse{
 			CorrelationID: item.CorrelationID,
-			ShortURL:      createResult.ShortURL,
+			ShortURL:      createResults[i],
 		})
 	}
 
