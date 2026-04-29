@@ -107,7 +107,7 @@ WHERE short_url = $1`
 	return value
 }
 
-func runMigrations(db *sql.DB) error {
+func RunPostgresMigrations(db *sql.DB) error {
 	logging.Sugar.Debugw("Preparing embedded migration source")
 	source, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
@@ -140,22 +140,4 @@ func runMigrations(db *sql.DB) error {
 	}
 
 	return nil
-}
-
-func RunPostgresMigrations(dsn string) error {
-	logging.Sugar.Debugw("Opening dedicated PostgreSQL connection for migrations")
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		logging.Sugar.Errorw("Failed to open PostgreSQL connection for migrations", "error", err)
-		return err
-	}
-	defer db.Close()
-
-	logging.Sugar.Debugw("Pinging PostgreSQL on migration connection")
-	if err := db.Ping(); err != nil {
-		logging.Sugar.Errorw("Failed to ping PostgreSQL on migration connection", "error", err)
-		return err
-	}
-
-	return runMigrations(db)
 }
