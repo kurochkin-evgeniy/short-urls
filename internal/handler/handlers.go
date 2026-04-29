@@ -37,7 +37,12 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 		switch request.Header.Get("content-type") {
 		case "text/plain":
 			{
-				createResult := s.CreateShortUrl(string(body))
+				createResult, err := s.CreateShortUrl(string(body))
+				if err != nil {
+					logging.Sugar.Errorw("Failed to create short url", "error", err)
+					responce.WriteHeader(http.StatusInternalServerError)
+					return
+				}
 				responce.Header().Set("content-type", "text/plain")
 				if createResult.WasInserted {
 					responce.WriteHeader(http.StatusCreated)
@@ -51,7 +56,12 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 			{
 				var r CreateShortUrlRequest
 				if err := json.Unmarshal(body, &r); err == nil {
-					createResult := s.CreateShortUrl(r.Url)
+					createResult, err := s.CreateShortUrl(r.Url)
+					if err != nil {
+						logging.Sugar.Errorw("Failed to create short url", "error", err)
+						responce.WriteHeader(http.StatusInternalServerError)
+						return
+					}
 
 					var resp CreateShortUrlResponse
 					resp.Result = createResult.ShortURL
@@ -97,7 +107,12 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 
 	batchResp := make([]BatchShortUrlResponse, 0, len(batchReq))
 	for _, item := range batchReq {
-		createResult := s.CreateShortUrl(item.OriginalURL)
+		createResult, err := s.CreateShortUrl(item.OriginalURL)
+		if err != nil {
+			logging.Sugar.Errorw("Failed to create short url in batch", "error", err)
+			responce.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		batchResp = append(batchResp, BatchShortUrlResponse{
 			CorrelationID: item.CorrelationID,
 			ShortURL:      createResult.ShortURL,

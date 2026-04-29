@@ -8,7 +8,7 @@ import (
 )
 
 type KeyValueStorage interface {
-	InsertNewValue(key string, value string) (bool, string)
+	InsertNewValue(key string, value string) (bool, string, error)
 	GetValue(key string) string
 }
 
@@ -35,23 +35,25 @@ func NewMapKeyValuePermanentStorage(path string) KeyValueStorage {
 	return st
 }
 
-func (a *MapKeyValueStorage) InsertNewValue(key string, value string) (bool, string) {
+func (a *MapKeyValueStorage) InsertNewValue(key string, value string) (bool, string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	for existingKey, existingValue := range a.dict {
 		if existingValue == value {
-			return false, existingKey
+			return false, existingKey, nil
 		}
 	}
 
 	if _, ok := a.dict[key]; ok {
-		return false, ""
+		return false, "", nil
 	}
 	a.dict[key] = value
-	a.saveToFile()
+	if err := a.saveToFile(); err != nil {
+		return false, "", err
+	}
 
-	return true, ""
+	return true, "", nil
 }
 
 func (a *MapKeyValueStorage) GetValue(key string) string {
@@ -85,10 +87,10 @@ func (a *MapKeyValueStorage) loadFromFile() {
 
 }
 
-func (a *MapKeyValueStorage) saveToFile() {
+func (a *MapKeyValueStorage) saveToFile() error {
 
 	if a.permanentFile == "" {
-		return
+		return nil
 	}
 
 	var records = make([]Filerecord, 0, len(a.dict))
@@ -102,13 +104,14 @@ func (a *MapKeyValueStorage) saveToFile() {
 	jsonData, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
 		logging.Sugar.Errorf("Failed MarshalIndent: Error = %s", err)
-		return
+		return err
 	}
 
 	err = os.WriteFile(a.permanentFile, jsonData, 0644)
 	if err != nil {
 		logging.Sugar.Errorf("Failed WriteFile: Error = %s", err)
-		return
+		return err
 	}
 
+	return nil
 }

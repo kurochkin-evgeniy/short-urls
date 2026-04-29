@@ -22,7 +22,7 @@ func NewPostgresKeyValueStorage(db *sql.DB) KeyValueStorage {
 	return &PostgresKeyValueStorage{db: db}
 }
 
-func (s *PostgresKeyValueStorage) InsertNewValue(key string, value string) (bool, string) {
+func (s *PostgresKeyValueStorage) InsertNewValue(key string, value string) (bool, string, error) {
 	const query = `
 WITH inserted AS (
     INSERT INTO short_urls (short_url, original_url)
@@ -43,14 +43,14 @@ LIMIT 1`
 	var inserted bool
 	err := s.db.QueryRow(query, key, value).Scan(&shortURL, &inserted)
 	if err != nil {
-		return false, ""
+		return false, "", err
 	}
 
 	if inserted {
-		return true, ""
+		return true, "", nil
 	}
 
-	return false, shortURL
+	return false, shortURL, nil
 }
 
 func (s *PostgresKeyValueStorage) GetValue(key string) string {

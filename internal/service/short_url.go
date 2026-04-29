@@ -22,22 +22,25 @@ func NewShortUrlService(baseURL string, storage repository.KeyValueStorage) *Sho
 	}
 }
 
-func (s *ShortUrlService) CreateShortUrl(url string) CreateShortURLResult {
+func (s *ShortUrlService) CreateShortUrl(url string) (CreateShortURLResult, error) {
 
 	for {
 		id := randStringBytes(6)
-		inserted, existingID := s.storage.InsertNewValue(id, url)
+		inserted, existingID, err := s.storage.InsertNewValue(id, url)
+		if err != nil {
+			return CreateShortURLResult{}, err
+		}
 		if inserted {
 			return CreateShortURLResult{
 				ShortURL:    s.baseUrl + "/" + id,
 				WasInserted: true,
-			}
+			}, nil
 		}
 		if existingID != "" {
 			return CreateShortURLResult{
 				ShortURL:    s.baseUrl + "/" + existingID,
 				WasInserted: false,
-			}
+			}, nil
 		}
 	}
 }

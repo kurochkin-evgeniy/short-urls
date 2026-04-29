@@ -198,7 +198,8 @@ func Test_handleRedirectUrl307(t *testing.T) {
 
 	const redirectUrl = "my url"
 	s := service.NewShortUrlService("", repository.NewMapKeyValueStorage())
-	createResult := s.CreateShortUrl(redirectUrl)
+	createResult, err := s.CreateShortUrl(redirectUrl)
+	require.NoError(t, err)
 
 	request := httptest.NewRequest(http.MethodGet, createResult.ShortURL, nil)
 	w := httptest.NewRecorder()
