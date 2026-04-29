@@ -129,7 +129,6 @@ func RunPostgresMigrations(db *sql.DB) error {
 		logging.Sugar.Errorw("Failed to initialize migration instance", "error", err)
 		return err
 	}
-	defer m.Close()
 
 	logging.Sugar.Debugw("Applying up migrations")
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
