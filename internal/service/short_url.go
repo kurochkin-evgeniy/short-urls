@@ -2,7 +2,6 @@ package service
 
 import (
 	"math/rand"
-	"short-urls/internal/config"
 	"short-urls/internal/repository"
 )
 
@@ -11,20 +10,66 @@ type ShortUrlService struct {
 	baseUrl string
 }
 
-func NewShortUrlService(c *config.Config) *ShortUrlService {
+type CreateShortURLResult struct {
+	ShortURL    string
+	WasInserted bool
+}
+
+func NewShortUrlService(baseURL string, storage repository.KeyValueStorage) *ShortUrlService {
 	return &ShortUrlService{
-		storage: repository.NewMapKeyValuePermanentStorage(c.FilePath),
-		baseUrl: c.BaseUrl,
+		storage: storage,
+		baseUrl: baseURL,
 	}
 }
 
-func (s *ShortUrlService) CreateShortUrl(url string) string {
+func (s *ShortUrlService) CreateShortUrl(url string) (CreateShortURLResult, error) {
 
 	for {
 		id := randStringBytes(6)
-		if s.storage.InsertNewValue(id, url) {
-			return s.baseUrl + "/" + id
+		inserted, existingID, err := s.storage.InsertNewValue(id, url)
+		if err != nil {
+			return CreateShortURLResult{}, err
 		}
+		if inserted {
+			return CreateShortURLResult{
+				ShortURL:    s.baseUrl + "/" + id,
+				WasInserted: true,
+			}, nil
+		}
+		if existingID != "" {
+			return CreateShortURLResult{
+				ShortURL:    s.baseUrl + "/" + existingID,
+				WasInserted: false,
+			}, nil
+		}
+	}
+}
+
+func (s *ShortUrlService) CreateBatchShortUrls(urls []string) ([]string, error) {
+
+	for {
+		items := make([]repository.BatchInsertItem, 0, len(urls))
+		for _, url := range urls {
+			items = append(items, repository.BatchInsertItem{
+				Key:   randStringBytes(6),
+				Value: url,
+			})
+		}
+		batchResults, err := s.storage.InsertNewValuesBatch(items)
+		if err != nil {
+			return nil, err
+		}
+		results := make([]string, 0, len(batchResults))
+		for i, storageResult := range batchResults {
+			shortID := items[i].Key
+			if !storageResult.Inserted && storageResult.ExistingKey != "" {
+				shortID = storageResult.ExistingKey
+			}
+			results = append(results,
+				s.baseUrl+"/"+shortID,
+			)
+		}
+		return results, nil
 	}
 }
 

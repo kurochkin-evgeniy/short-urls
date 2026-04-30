@@ -8,8 +8,18 @@ import (
 )
 
 type KeyValueStorage interface {
-	InsertNewValue(key string, value string) bool
+	InsertNewValue(key string, value string) (bool, string, error)
+	InsertNewValuesBatch(items []BatchInsertItem) ([]BatchInsertResult, error)
 	GetValue(key string) string
+}
+
+type BatchInsertItem struct {
+	Key   string
+	Value string
+}
+type BatchInsertResult struct {
+	Inserted    bool
+	ExistingKey string
 }
 
 type MapKeyValueStorage struct {
@@ -35,17 +45,55 @@ func NewMapKeyValuePermanentStorage(path string) KeyValueStorage {
 	return st
 }
 
-func (a *MapKeyValueStorage) InsertNewValue(key string, value string) bool {
+func (a *MapKeyValueStorage) InsertNewValue(key string, value string) (bool, string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	for existingKey, existingValue := range a.dict {
+		if existingValue == value {
+			return false, existingKey, nil
+		}
+	}
+
 	if _, ok := a.dict[key]; ok {
-		return false
+		return false, "", nil
 	}
 	a.dict[key] = value
-	a.saveToFile()
+	if err := a.saveToFile(); err != nil {
+		return false, "", err
+	}
 
-	return true
+	return true, "", nil
+}
+
+func (a *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem) ([]BatchInsertResult, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	results := make([]BatchInsertResult, 0, len(items))
+	for _, item := range items {
+		inserted := false
+		existingKey := ""
+		for currentKey, currentValue := range a.dict {
+			if currentValue == item.Value {
+				existingKey = currentKey
+				break
+			}
+		}
+		if existingKey == "" {
+			if _, exists := a.dict[item.Key]; !exists {
+				a.dict[item.Key] = item.Value
+				inserted = true
+			}
+		}
+		results = append(results, BatchInsertResult{
+			Inserted:    inserted,
+			ExistingKey: existingKey,
+		})
+	}
+	if err := a.saveToFile(); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 func (a *MapKeyValueStorage) GetValue(key string) string {
@@ -79,10 +127,10 @@ func (a *MapKeyValueStorage) loadFromFile() {
 
 }
 
-func (a *MapKeyValueStorage) saveToFile() {
+func (a *MapKeyValueStorage) saveToFile() error {
 
 	if a.permanentFile == "" {
-		return
+		return nil
 	}
 
 	var records = make([]Filerecord, 0, len(a.dict))
@@ -96,13 +144,14 @@ func (a *MapKeyValueStorage) saveToFile() {
 	jsonData, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
 		logging.Sugar.Errorf("Failed MarshalIndent: Error = %s", err)
-		return
+		return err
 	}
 
 	err = os.WriteFile(a.permanentFile, jsonData, 0644)
 	if err != nil {
 		logging.Sugar.Errorf("Failed WriteFile: Error = %s", err)
-		return
+		return err
 	}
 
+	return nil
 }
