@@ -1,10 +1,15 @@
 package handler
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"short-urls/internal/middleware"
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
 	"strings"
@@ -198,7 +203,7 @@ func Test_handleRedirectUrl307(t *testing.T) {
 
 	const redirectUrl = "my url"
 	s := service.NewShortUrlService("", repository.NewMapKeyValueStorage())
-	createResult, err := s.CreateShortUrl(redirectUrl)
+	createResult, err := s.CreateShortUrl(redirectUrl, "test-user")
 	require.NoError(t, err)
 
 	request := httptest.NewRequest(http.MethodGet, createResult.ShortURL, nil)
@@ -225,4 +230,81 @@ func Test_handleUnknownRedirectUrl400(t *testing.T) {
 	result := w.Result()
 
 	assert.Equal(t, 400, result.StatusCode)
+}
+
+func Test_handleGetUserURLs200(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	auth := middleware.AuthMiddleware("test-secret")
+	createHandler := auth(http.HandlerFunc(HandleCreateShortUrRequest(s)))
+	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(s)))
+
+	createReq := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://example.com/u1"))
+	createReq.Header.Set("Content-Type", "text/plain")
+	createRec := httptest.NewRecorder()
+	createHandler.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Result().StatusCode)
+
+	cookies := createRec.Result().Cookies()
+	require.NotEmpty(t, cookies)
+	userCookie := cookies[0]
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
+	getReq.AddCookie(userCookie)
+	getRec := httptest.NewRecorder()
+	getHandler.ServeHTTP(getRec, getReq)
+
+	res := getRec.Result()
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "application/json", res.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+
+	var payload []UserURLResponse
+	require.NoError(t, json.Unmarshal(body, &payload))
+	require.Len(t, payload, 1)
+	assert.Equal(t, "https://example.com/u1", payload[0].OriginalURL)
+	assert.True(t, strings.HasPrefix(payload[0].ShortURL, "http://localhost:8080/"))
+}
+
+func Test_handleGetUserURLs204(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	auth := middleware.AuthMiddleware("test-secret")
+	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(s)))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
+	rec := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec, req)
+
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusNoContent, res.StatusCode)
+}
+
+func Test_handleGetUserURLs401WhenCookieHasNoUserID(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	auth := middleware.AuthMiddleware("test-secret")
+	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(s)))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "user_token",
+		Value: makeSignedTokenWithEmptyUserID("test-secret"),
+		Path:  "/",
+	})
+	rec := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec, req)
+
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, res.StatusCode)
+}
+
+func makeSignedTokenWithEmptyUserID(secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(""))
+	signature := mac.Sum(nil)
+	raw := "." + hex.EncodeToString(signature)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }

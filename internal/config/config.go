@@ -6,10 +6,11 @@ import (
 )
 
 type Config struct {
-	HostAddr    string
-	BaseUrl     string
-	FilePath    string
-	DatabaseDSN string
+	HostAddr     string
+	BaseUrl      string
+	FilePath     string
+	DatabaseDSN  string
+	CookieSecret string
 }
 
 func NewConfig() *Config {
@@ -18,6 +19,7 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.BaseUrl, "b", "http://localhost:8080", "Base URL for shortened links")
 	flag.StringVar(&cfg.FilePath, "f", "", "storage path")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "PostgreSQL DSN")
+	flag.StringVar(&cfg.CookieSecret, "s", "", "Cookie signature secret")
 	flag.Parse()
 
 	if val, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
@@ -34,6 +36,9 @@ func NewConfig() *Config {
 
 	if val, ok := os.LookupEnv("DATABASE_DSN"); ok {
 		cfg.DatabaseDSN = val
+	}
+	if val, ok := os.LookupEnv("COOKIE_SECRET"); ok {
+		cfg.CookieSecret = val
 	}
 
 	return cfg

@@ -22,11 +22,11 @@ func NewPostgresKeyValueStorage(db *sql.DB) KeyValueStorage {
 	return &PostgresKeyValueStorage{db: db}
 }
 
-func (s *PostgresKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem) ([]BatchInsertResult, error) {
+func (s *PostgresKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error) {
 	const query = `
 WITH inserted AS (
-    INSERT INTO short_urls (short_url, original_url)
-    VALUES ($1, $2)
+    INSERT INTO short_urls (short_url, original_url, user_id)
+    VALUES ($1, $2, $3)
     ON CONFLICT (original_url) DO NOTHING
     RETURNING short_url
 )
@@ -47,7 +47,7 @@ LIMIT 1`
 	for _, item := range items {
 		var shortURL string
 		var inserted bool
-		if err := tx.QueryRow(query, item.Key, item.Value).Scan(&shortURL, &inserted); err != nil {
+		if err := tx.QueryRow(query, item.Key, item.Value, userID).Scan(&shortURL, &inserted); err != nil {
 			return nil, err
 		}
 		result := BatchInsertResult{Inserted: inserted}
@@ -62,11 +62,11 @@ LIMIT 1`
 	return results, nil
 }
 
-func (s *PostgresKeyValueStorage) InsertNewValue(key string, value string) (bool, string, error) {
+func (s *PostgresKeyValueStorage) InsertNewValue(key string, value string, userID string) (bool, string, error) {
 	const query = `
 WITH inserted AS (
-    INSERT INTO short_urls (short_url, original_url)
-    VALUES ($1, $2)
+    INSERT INTO short_urls (short_url, original_url, user_id)
+    VALUES ($1, $2, $3)
     ON CONFLICT (original_url) DO NOTHING
     RETURNING short_url
 )
@@ -81,7 +81,7 @@ LIMIT 1`
 
 	var shortURL string
 	var inserted bool
-	err := s.db.QueryRow(query, key, value).Scan(&shortURL, &inserted)
+	err := s.db.QueryRow(query, key, value, userID).Scan(&shortURL, &inserted)
 	if err != nil {
 		return false, "", err
 	}
@@ -105,6 +105,33 @@ WHERE short_url = $1`
 	}
 
 	return value
+}
+
+func (s *PostgresKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
+	const query = `
+SELECT short_url, original_url
+FROM short_urls
+WHERE user_id = $1`
+
+	rows, err := s.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]UserURL, 0)
+	for rows.Next() {
+		var item UserURL
+		if err := rows.Scan(&item.ShortURL, &item.OriginalURL); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func RunPostgresMigrations(db *sql.DB) error {
