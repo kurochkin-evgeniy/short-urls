@@ -183,14 +183,45 @@ func handleGetUserURLs(responce http.ResponseWriter, request *http.Request, s *s
 func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
 
 	id := request.URL.Path[1:]
-	url := s.ResolveShortUrl(id)
-	if url != "" {
-		responce.Header().Add("Location", url)
-		responce.WriteHeader(http.StatusTemporaryRedirect)
+	url, isDeleted, found := s.LookupShortURL(id)
+	if !found {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if isDeleted {
+		responce.WriteHeader(http.StatusGone)
+		return
+	}
+	responce.Header().Add("Location", url)
+	responce.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
+	userID := middleware.UserIDFromContext(request.Context())
+	if middleware.UserCookieWasPresent(request.Context()) && middleware.UserCookieHasNoID(request.Context()) {
+		responce.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	responce.WriteHeader(http.StatusBadRequest)
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var shortIDs []string
+	if err := json.Unmarshal(body, &shortIDs); err != nil {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(shortIDs) == 0 {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	s.QueueUserURLsDeletion(userID, shortIDs)
+	responce.WriteHeader(http.StatusAccepted)
 }
 
 func HandleRedirectRequest(s *service.ShortUrlService) http.HandlerFunc {
@@ -214,6 +245,12 @@ func HandleCreateBatchShortUrRequest(s *service.ShortUrlService) http.HandlerFun
 func HandleGetUserURLsRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleGetUserURLs(responce, request, s)
+	}
+}
+
+func HandleDeleteUserURLsRequest(s *service.ShortUrlService) http.HandlerFunc {
+	return func(responce http.ResponseWriter, request *http.Request) {
+		handleDeleteUserURLs(responce, request, s)
 	}
 }
 

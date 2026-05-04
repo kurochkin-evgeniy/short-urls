@@ -14,6 +14,7 @@ import (
 	"short-urls/internal/service"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -232,6 +233,27 @@ func Test_handleUnknownRedirectUrl400(t *testing.T) {
 	assert.Equal(t, 400, result.StatusCode)
 }
 
+func Test_handleRedirectUrl410(t *testing.T) {
+	st := repository.NewMapKeyValueStorage()
+	s := service.NewShortUrlService("", st)
+
+	createResult, err := s.CreateShortUrl("https://example.com/gone", "")
+	require.NoError(t, err)
+
+	shortID := strings.TrimPrefix(createResult.ShortURL, "/")
+	require.NotEmpty(t, shortID)
+
+	require.NoError(t, st.MarkURLsDeletedBatch("", []string{shortID}))
+
+	request := httptest.NewRequest(http.MethodGet, "/"+shortID, nil)
+	w := httptest.NewRecorder()
+	http.HandlerFunc(HandleRedirectRequest(s))(w, request)
+
+	result := w.Result()
+	defer result.Body.Close()
+	assert.Equal(t, http.StatusGone, result.StatusCode)
+}
+
 func Test_handleGetUserURLs200(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
 	auth := middleware.AuthMiddleware("test-secret")
@@ -307,4 +329,73 @@ func makeSignedTokenWithEmptyUserID(secret string) string {
 	signature := mac.Sum(nil)
 	raw := "." + hex.EncodeToString(signature)
 	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
+func Test_handleDeleteUserURLs202(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	auth := middleware.AuthMiddleware("test-secret")
+	createHandler := auth(http.HandlerFunc(HandleCreateShortUrRequest(s)))
+	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(s)))
+	redirectHandler := http.HandlerFunc(HandleRedirectRequest(s))
+
+	createReq := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://example.com/del"))
+	createReq.Header.Set("Content-Type", "text/plain")
+	createRec := httptest.NewRecorder()
+	createHandler.ServeHTTP(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Result().StatusCode)
+	cookies := createRec.Result().Cookies()
+	require.NotEmpty(t, cookies)
+	userCookie := cookies[0]
+
+	createBody, err := io.ReadAll(createRec.Result().Body)
+	require.NoError(t, err)
+	_ = createRec.Result().Body.Close()
+	shortPath := strings.TrimPrefix(strings.TrimSpace(string(createBody)), "http://localhost:8080/")
+	shortID := strings.TrimPrefix(shortPath, "/")
+
+	delBody := `["` + shortID + `"]`
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/user/urls", strings.NewReader(delBody))
+	delReq.Header.Set("Content-Type", "application/json")
+	delReq.AddCookie(userCookie)
+	delRec := httptest.NewRecorder()
+	deleteHandler.ServeHTTP(delRec, delReq)
+	require.Equal(t, http.StatusAccepted, delRec.Result().StatusCode)
+
+	time.Sleep(150 * time.Millisecond)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/"+shortID, nil)
+	getRec := httptest.NewRecorder()
+	redirectHandler.ServeHTTP(getRec, getReq)
+	res := getRec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusGone, res.StatusCode)
+}
+
+func Test_handleDeleteUserURLs400EmptyBody(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	auth := middleware.AuthMiddleware("test-secret")
+	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(s)))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/user/urls", strings.NewReader("[]"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	deleteHandler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusBadRequest, rec.Result().StatusCode)
+}
+
+func Test_handleDeleteUserURLs401WhenCookieHasNoUserID(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	auth := middleware.AuthMiddleware("test-secret")
+	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(s)))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/user/urls", strings.NewReader(`["abc"]`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{
+		Name:  "user_token",
+		Value: makeSignedTokenWithEmptyUserID("test-secret"),
+		Path:  "/",
+	})
+	rec := httptest.NewRecorder()
+	deleteHandler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Result().StatusCode)
 }
