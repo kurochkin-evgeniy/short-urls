@@ -4,12 +4,19 @@ import (
 	"math/rand"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
-	"sync"
+	"time"
 )
 
 type ShortUrlService struct {
 	storage repository.KeyValueStorage
 	baseUrl string
+
+	deleteQueue chan deleteQueueJob
+}
+
+type deleteQueueJob struct {
+	userID   string
+	shortIDs []string
 }
 
 type CreateShortURLResult struct {
@@ -17,11 +24,16 @@ type CreateShortURLResult struct {
 	WasInserted bool
 }
 
+const defaultDeleteQueueBuf = 4096
+
 func NewShortUrlService(baseURL string, storage repository.KeyValueStorage) *ShortUrlService {
-	return &ShortUrlService{
-		storage: storage,
-		baseUrl: baseURL,
+	s := &ShortUrlService{
+		storage:     storage,
+		baseUrl:     baseURL,
+		deleteQueue: make(chan deleteQueueJob, defaultDeleteQueueBuf),
 	}
+	go s.runDeleteQueueConsumer()
+	return s
 }
 
 func (s *ShortUrlService) CreateShortUrl(url string, userID string) (CreateShortURLResult, error) {
@@ -76,8 +88,8 @@ func (s *ShortUrlService) CreateBatchShortUrls(urls []string, userID string) ([]
 }
 
 const (
-	deleteBatchSize       = 100
-	maxDeleteFanInWorkers = 8
+	deleteBatchSize      = 100
+	deleteFlushTickerDur = 500 * time.Millisecond
 )
 
 // LookupShortURL returns the stored URL, whether it is soft-deleted, and whether the short id exists.
@@ -91,51 +103,47 @@ func (s *ShortUrlService) QueueUserURLsDeletion(userID string, shortIDs []string
 		return
 	}
 	ids := append([]string(nil), shortIDs...)
-	go s.runUserURLsDeletion(userID, ids)
+	go func() {
+		s.deleteQueue <- deleteQueueJob{userID: userID, shortIDs: ids}
+	}()
 }
 
-func (s *ShortUrlService) runUserURLsDeletion(userID string, ids []string) {
-	n := min(maxDeleteFanInWorkers, len(ids))
-	if n < 1 {
-		n = 1
-	}
-	ch := make(chan string, deleteBatchSize)
-	var wg sync.WaitGroup
-	chunkSize := (len(ids) + n - 1) / n
-	start := 0
-	for w := 0; w < n; w++ {
-		end := start + chunkSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-		if start >= end {
-			break
-		}
-		part := ids[start:end]
-		start = end
-		wg.Add(1)
-		go func(p []string) {
-			defer wg.Done()
-			for _, id := range p {
-				ch <- id
-			}
-		}(part)
-	}
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
+func (s *ShortUrlService) runDeleteQueueConsumer() {
+	ticker := time.NewTicker(deleteFlushTickerDur)
+	defer ticker.Stop()
 
-	var batch []string
-	for id := range ch {
-		batch = append(batch, id)
-		if len(batch) >= deleteBatchSize {
-			s.flushDeleteBatch(userID, batch)
+	batch := make([]string, 0, deleteBatchSize)
+	var batchUser string
+
+	for {
+		select {
+		case job := <-s.deleteQueue:
+			for _, id := range job.shortIDs {
+				if id == "" {
+					continue
+				}
+				if len(batch) > 0 && job.userID != batchUser {
+					s.flushDeleteBatch(batchUser, batch)
+					batch = batch[:0]
+				}
+				batchUser = job.userID
+				batch = append(batch, id)
+				for len(batch) >= deleteBatchSize {
+					s.flushDeleteBatch(batchUser, batch[:deleteBatchSize])
+					batch = append(batch[:0], batch[deleteBatchSize:]...)
+				}
+			}
+			if len(batch) > 0 && len(s.deleteQueue) == 0 {
+				s.flushDeleteBatch(batchUser, batch)
+				batch = batch[:0]
+			}
+		case <-ticker.C:
+			if len(batch) == 0 || len(s.deleteQueue) == 0 {
+				continue
+			}
+			s.flushDeleteBatch(batchUser, batch)
 			batch = batch[:0]
 		}
-	}
-	if len(batch) > 0 {
-		s.flushDeleteBatch(userID, batch)
 	}
 }
 
