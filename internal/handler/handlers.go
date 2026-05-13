@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"short-urls/internal/logging"
+	"short-urls/internal/middleware"
 	"short-urls/internal/service"
 	"time"
 )
@@ -29,7 +30,13 @@ type BatchShortUrlResponse struct {
 	ShortURL      string `json:"short_url"`
 }
 
+type UserURLResponse struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
 func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
+	userID := middleware.UserIDFromContext(request.Context())
 
 	body, err := io.ReadAll(request.Body)
 	if err == nil {
@@ -37,7 +44,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 		switch request.Header.Get("content-type") {
 		case "text/plain":
 			{
-				createResult, err := s.CreateShortUrl(string(body))
+				createResult, err := s.CreateShortUrl(string(body), userID)
 				if err != nil {
 					logging.Sugar.Errorw("Failed to create short url", "error", err)
 					responce.WriteHeader(http.StatusInternalServerError)
@@ -56,7 +63,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 			{
 				var r CreateShortUrlRequest
 				if err := json.Unmarshal(body, &r); err == nil {
-					createResult, err := s.CreateShortUrl(r.Url)
+					createResult, err := s.CreateShortUrl(r.Url, userID)
 					if err != nil {
 						logging.Sugar.Errorw("Failed to create short url", "error", err)
 						responce.WriteHeader(http.StatusInternalServerError)
@@ -88,6 +95,8 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 }
 
 func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
+	userID := middleware.UserIDFromContext(request.Context())
+
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
 		responce.WriteHeader(http.StatusBadRequest)
@@ -110,7 +119,7 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 		urls = append(urls, item.OriginalURL)
 	}
 
-	createResults, err := s.CreateBatchShortUrls(urls)
+	createResults, err := s.CreateBatchShortUrls(urls, userID)
 	if err != nil {
 		logging.Sugar.Errorw("Failed to create batch short urls", "error", err)
 		responce.WriteHeader(http.StatusInternalServerError)
@@ -135,17 +144,84 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 	responce.Write(respBody)
 }
 
-func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
-
-	id := request.URL.Path[1:]
-	url := s.ResolveShortUrl(id)
-	if url != "" {
-		responce.Header().Add("Location", url)
-		responce.WriteHeader(http.StatusTemporaryRedirect)
+func handleGetUserURLs(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
+	userID := middleware.UserIDFromContext(request.Context())
+	if middleware.UserCookieWasPresent(request.Context()) && middleware.UserCookieHasNoID(request.Context()) {
+		responce.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	responce.WriteHeader(http.StatusBadRequest)
+	userURLs, err := s.GetUserURLs(userID)
+	if err != nil {
+		logging.Sugar.Errorw("Failed to read user urls", "error", err)
+		responce.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if len(userURLs) == 0 {
+		responce.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	result := make([]UserURLResponse, 0, len(userURLs))
+	for _, item := range userURLs {
+		result = append(result, UserURLResponse{
+			ShortURL:    item.ShortURL,
+			OriginalURL: item.OriginalURL,
+		})
+	}
+
+	body, err := json.Marshal(result)
+	if err != nil {
+		responce.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	responce.Header().Set("content-type", "application/json")
+	responce.WriteHeader(http.StatusOK)
+	responce.Write(body)
+}
+
+func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
+
+	id := request.URL.Path[1:]
+	url, isDeleted, found := s.LookupShortURL(id)
+	if !found {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if isDeleted {
+		responce.WriteHeader(http.StatusGone)
+		return
+	}
+	responce.Header().Add("Location", url)
+	responce.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
+	userID := middleware.UserIDFromContext(request.Context())
+	if middleware.UserCookieWasPresent(request.Context()) && middleware.UserCookieHasNoID(request.Context()) {
+		responce.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var shortIDs []string
+	if err := json.Unmarshal(body, &shortIDs); err != nil {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(shortIDs) == 0 {
+		responce.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	s.QueueUserURLsDeletion(userID, shortIDs)
+	responce.WriteHeader(http.StatusAccepted)
 }
 
 func HandleRedirectRequest(s *service.ShortUrlService) http.HandlerFunc {
@@ -163,6 +239,18 @@ func HandleCreateShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
 func HandleCreateBatchShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleCreateBatchShortUrl(responce, request, s)
+	}
+}
+
+func HandleGetUserURLsRequest(s *service.ShortUrlService) http.HandlerFunc {
+	return func(responce http.ResponseWriter, request *http.Request) {
+		handleGetUserURLs(responce, request, s)
+	}
+}
+
+func HandleDeleteUserURLsRequest(s *service.ShortUrlService) http.HandlerFunc {
+	return func(responce http.ResponseWriter, request *http.Request) {
+		handleDeleteUserURLs(responce, request, s)
 	}
 }
 

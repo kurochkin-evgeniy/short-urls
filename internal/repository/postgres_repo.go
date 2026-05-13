@@ -9,10 +9,19 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/lib/pq"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
+
+// Storage maps a row in short_urls (PostgreSQL column tags).
+type Storage struct {
+	UUID         string `db:"user_id"`
+	ShortURL     string `db:"short_url"`
+	OriginalURL  string `db:"original_url"`
+	DeletedFlag  bool   `db:"is_deleted"`
+}
 
 type PostgresKeyValueStorage struct {
 	db *sql.DB
@@ -22,11 +31,11 @@ func NewPostgresKeyValueStorage(db *sql.DB) KeyValueStorage {
 	return &PostgresKeyValueStorage{db: db}
 }
 
-func (s *PostgresKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem) ([]BatchInsertResult, error) {
+func (s *PostgresKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error) {
 	const query = `
 WITH inserted AS (
-    INSERT INTO short_urls (short_url, original_url)
-    VALUES ($1, $2)
+    INSERT INTO short_urls (short_url, original_url, user_id)
+    VALUES ($1, $2, $3)
     ON CONFLICT (original_url) DO NOTHING
     RETURNING short_url
 )
@@ -47,7 +56,7 @@ LIMIT 1`
 	for _, item := range items {
 		var shortURL string
 		var inserted bool
-		if err := tx.QueryRow(query, item.Key, item.Value).Scan(&shortURL, &inserted); err != nil {
+		if err := tx.QueryRow(query, item.Key, item.Value, userID).Scan(&shortURL, &inserted); err != nil {
 			return nil, err
 		}
 		result := BatchInsertResult{Inserted: inserted}
@@ -62,11 +71,11 @@ LIMIT 1`
 	return results, nil
 }
 
-func (s *PostgresKeyValueStorage) InsertNewValue(key string, value string) (bool, string, error) {
+func (s *PostgresKeyValueStorage) InsertNewValue(key string, value string, userID string) (bool, string, error) {
 	const query = `
 WITH inserted AS (
-    INSERT INTO short_urls (short_url, original_url)
-    VALUES ($1, $2)
+    INSERT INTO short_urls (short_url, original_url, user_id)
+    VALUES ($1, $2, $3)
     ON CONFLICT (original_url) DO NOTHING
     RETURNING short_url
 )
@@ -81,7 +90,7 @@ LIMIT 1`
 
 	var shortURL string
 	var inserted bool
-	err := s.db.QueryRow(query, key, value).Scan(&shortURL, &inserted)
+	err := s.db.QueryRow(query, key, value, userID).Scan(&shortURL, &inserted)
 	if err != nil {
 		return false, "", err
 	}
@@ -93,18 +102,63 @@ LIMIT 1`
 	return false, shortURL, nil
 }
 
-func (s *PostgresKeyValueStorage) GetValue(key string) string {
+func (s *PostgresKeyValueStorage) LookupShortURL(key string) (string, bool, bool) {
 	const query = `
-SELECT original_url
+SELECT original_url, is_deleted
 FROM short_urls
 WHERE short_url = $1`
 
 	var value string
-	if err := s.db.QueryRow(query, key).Scan(&value); err != nil {
-		return ""
+	var isDeleted bool
+	if err := s.db.QueryRow(query, key).Scan(&value, &isDeleted); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", false, false
+		}
+		return "", false, false
 	}
 
-	return value
+	return value, isDeleted, true
+}
+
+func (s *PostgresKeyValueStorage) MarkURLsDeletedBatch(userID string, shortURLs []string) error {
+	if len(shortURLs) == 0 {
+		return nil
+	}
+	const q = `
+UPDATE short_urls
+SET is_deleted = TRUE
+WHERE user_id = $1
+  AND short_url = ANY($2::text[])`
+	_, err := s.db.Exec(q, userID, pq.Array(shortURLs))
+	return err
+}
+
+func (s *PostgresKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
+	const query = `
+SELECT short_url, original_url
+FROM short_urls
+WHERE user_id = $1
+  AND is_deleted = FALSE`
+
+	rows, err := s.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]UserURL, 0)
+	for rows.Next() {
+		var item UserURL
+		if err := rows.Scan(&item.ShortURL, &item.OriginalURL); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func RunPostgresMigrations(db *sql.DB) error {
