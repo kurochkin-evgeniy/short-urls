@@ -5,6 +5,7 @@ import (
 	"short-urls/internal/audit"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
+	"strings"
 	"time"
 )
 
@@ -26,7 +27,7 @@ type CreateShortURLResult struct {
 	WasInserted bool
 }
 
-const defaultDeleteQueueBuf = 4096
+const defaultDeleteQueueBuf = 128
 
 func NewShortUrlService(baseURL string, storage repository.KeyValueStorage, auditSubject ...*audit.Subject) *ShortUrlService {
 	s := &ShortUrlService{
@@ -59,13 +60,13 @@ func (s *ShortUrlService) CreateShortUrl(url string, userID string) (CreateShort
 		}
 		if inserted {
 			return CreateShortURLResult{
-				ShortURL:    s.baseUrl + "/" + id,
+				ShortURL:    s.buildShortURL(id),
 				WasInserted: true,
 			}, nil
 		}
 		if existingID != "" {
 			return CreateShortURLResult{
-				ShortURL:    s.baseUrl + "/" + existingID,
+				ShortURL:    s.buildShortURL(existingID),
 				WasInserted: false,
 			}, nil
 		}
@@ -86,15 +87,13 @@ func (s *ShortUrlService) CreateBatchShortUrls(urls []string, userID string) ([]
 		if err != nil {
 			return nil, err
 		}
-		results := make([]string, 0, len(batchResults))
+		results := make([]string, len(batchResults))
 		for i, storageResult := range batchResults {
 			shortID := items[i].Key
 			if !storageResult.Inserted && storageResult.ExistingKey != "" {
 				shortID = storageResult.ExistingKey
 			}
-			results = append(results,
-				s.baseUrl+"/"+shortID,
-			)
+			results[i] = s.buildShortURL(shortID)
 		}
 		return results, nil
 	}
@@ -172,23 +171,33 @@ func (s *ShortUrlService) GetUserURLs(userID string) ([]repository.UserURL, erro
 		return nil, err
 	}
 
-	result := make([]repository.UserURL, 0, len(storageItems))
-	for _, item := range storageItems {
-		result = append(result, repository.UserURL{
-			ShortURL:    s.baseUrl + "/" + item.ShortURL,
+	result := make([]repository.UserURL, len(storageItems))
+	for i, item := range storageItems {
+		result[i] = repository.UserURL{
+			ShortURL:    s.buildShortURL(item.ShortURL),
 			OriginalURL: item.OriginalURL,
-		})
+		}
 	}
 
 	return result, nil
 }
 
+func (s *ShortUrlService) buildShortURL(id string) string {
+	var b strings.Builder
+	b.Grow(len(s.baseUrl) + 1 + len(id))
+	b.WriteString(s.baseUrl)
+	b.WriteByte('/')
+	b.WriteString(id)
+	return b.String()
+}
+
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const shortIDLen = 6
 
 func randStringBytes(n int) string {
-	b := make([]byte, n)
-	for i := range b {
+	var b [shortIDLen]byte
+	for i := range b[:n] {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
-	return string(b)
+	return string(b[:n])
 }

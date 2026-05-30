@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"short-urls/internal/config"
 	"short-urls/internal/handler"
 	"short-urls/internal/logging"
@@ -35,6 +36,13 @@ func (a *ShortUrlApp) Start() error {
 	logging.LoggingInit()
 	defer logging.LoggingDone()
 	logging.Sugar.Infow("Starting short URL service", "address", a.cfg.HostAddr, "base_url", a.cfg.BaseUrl)
+
+	go func() {
+		logging.Sugar.Infow("Starting pprof server", "address", "localhost:6060")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			logging.Sugar.Errorw("pprof server stopped with error", "error", err)
+		}
+	}()
 
 	logging.Sugar.Debugw("Building storage backend")
 	storage, db, err := a.buildStorage()

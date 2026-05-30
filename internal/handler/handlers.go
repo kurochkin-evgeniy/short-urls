@@ -44,7 +44,8 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 		switch request.Header.Get("content-type") {
 		case "text/plain":
 			{
-				createResult, err := s.CreateShortUrl(string(body), userID)
+				originalURL := string(body)
+				createResult, err := s.CreateShortUrl(originalURL, userID)
 				if err != nil {
 					logging.Sugar.Errorw("Failed to create short url", "error", err)
 					responce.WriteHeader(http.StatusInternalServerError)
@@ -57,7 +58,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 					responce.WriteHeader(http.StatusConflict)
 				}
 				responce.Write([]byte(createResult.ShortURL))
-				s.AuditShorten(string(body), userID)
+				s.AuditShorten(originalURL, userID)
 				return
 			}
 		case "application/json":

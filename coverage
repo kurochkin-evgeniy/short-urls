@@ -1,0 +1,27 @@
+mode: set
+short-urls/internal/audit/audit.go:27.49,29.2 1 1
+short-urls/internal/audit/audit.go:31.64,33.21 2 1
+short-urls/internal/audit/audit.go:33.21,35.3 1 1
+short-urls/internal/audit/audit.go:36.2,36.20 1 1
+short-urls/internal/audit/audit.go:36.20,38.3 1 0
+short-urls/internal/audit/audit.go:39.2,39.25 1 1
+short-urls/internal/audit/audit.go:39.25,41.3 1 1
+short-urls/internal/audit/audit.go:42.2,42.33 1 1
+short-urls/internal/audit/audit.go:45.61,46.14 1 1
+short-urls/internal/audit/audit.go:46.14,48.3 1 1
+short-urls/internal/audit/audit.go:49.2,55.32 2 1
+short-urls/internal/audit/audit.go:55.32,57.3 1 1
+short-urls/internal/audit/file_observer.go:14.49,16.2 1 1
+short-urls/internal/audit/file_observer.go:18.44,20.16 2 1
+short-urls/internal/audit/file_observer.go:20.16,22.3 1 0
+short-urls/internal/audit/file_observer.go:24.2,28.16 4 1
+short-urls/internal/audit/file_observer.go:28.16,30.3 1 0
+short-urls/internal/audit/file_observer.go:31.2,33.39 2 1
+short-urls/internal/audit/url_observer.go:15.46,22.2 1 0
+short-urls/internal/audit/url_observer.go:24.43,26.16 2 0
+short-urls/internal/audit/url_observer.go:26.16,28.3 1 0
+short-urls/internal/audit/url_observer.go:30.2,31.16 2 0
+short-urls/internal/audit/url_observer.go:31.16,33.3 1 0
+short-urls/internal/audit/url_observer.go:34.2,37.16 3 0
+short-urls/internal/audit/url_observer.go:37.16,39.3 1 0
+short-urls/internal/audit/url_observer.go:40.2,40.25 1 0
