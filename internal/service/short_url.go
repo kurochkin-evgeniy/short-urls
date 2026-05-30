@@ -2,6 +2,7 @@ package service
 
 import (
 	"math/rand"
+	"short-urls/internal/audit"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
 	"time"
@@ -10,6 +11,7 @@ import (
 type ShortUrlService struct {
 	storage repository.KeyValueStorage
 	baseUrl string
+	audit   *audit.Subject
 
 	deleteQueue chan deleteQueueJob
 }
@@ -26,14 +28,25 @@ type CreateShortURLResult struct {
 
 const defaultDeleteQueueBuf = 4096
 
-func NewShortUrlService(baseURL string, storage repository.KeyValueStorage) *ShortUrlService {
+func NewShortUrlService(baseURL string, storage repository.KeyValueStorage, auditSubject ...*audit.Subject) *ShortUrlService {
 	s := &ShortUrlService{
 		storage:     storage,
 		baseUrl:     baseURL,
 		deleteQueue: make(chan deleteQueueJob, defaultDeleteQueueBuf),
 	}
+	if len(auditSubject) > 0 {
+		s.audit = auditSubject[0]
+	}
 	go s.runDeleteQueueConsumer()
 	return s
+}
+
+func (s *ShortUrlService) AuditShorten(originalURL, userID string) {
+	s.audit.Notify(audit.ActionShorten, userID, originalURL)
+}
+
+func (s *ShortUrlService) AuditFollow(originalURL, userID string) {
+	s.audit.Notify(audit.ActionFollow, userID, originalURL)
 }
 
 func (s *ShortUrlService) CreateShortUrl(url string, userID string) (CreateShortURLResult, error) {

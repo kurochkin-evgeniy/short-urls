@@ -57,6 +57,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 					responce.WriteHeader(http.StatusConflict)
 				}
 				responce.Write([]byte(createResult.ShortURL))
+				s.AuditShorten(string(body), userID)
 				return
 			}
 		case "application/json":
@@ -86,6 +87,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 						responce.WriteHeader(http.StatusConflict)
 					}
 					responce.Write(respStr)
+					s.AuditShorten(r.Url, userID)
 				}
 			}
 		}
@@ -194,6 +196,7 @@ func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, s *s
 	}
 	responce.Header().Add("Location", url)
 	responce.WriteHeader(http.StatusTemporaryRedirect)
+	s.AuditFollow(url, middleware.UserIDFromContext(request.Context()))
 }
 
 func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {

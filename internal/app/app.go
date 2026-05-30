@@ -11,6 +11,7 @@ import (
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
 
+	"short-urls/internal/audit"
 	"short-urls/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
@@ -47,7 +48,8 @@ func (a *ShortUrlApp) Start() error {
 	}
 
 	logging.Sugar.Debugw("Initializing short URL service")
-	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, storage)
+	auditSubject := audit.NewSubjectFromConfig(a.cfg.AuditFile, a.cfg.AuditURL)
+	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, storage, auditSubject)
 
 	logging.Sugar.Debugw("Configuring HTTP router")
 	r := chi.NewRouter()
