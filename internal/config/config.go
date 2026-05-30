@@ -1,3 +1,4 @@
+// Package config загружает настройки приложения из флагов командной строки и переменных окружения.
 package config
 
 import (
@@ -5,6 +6,7 @@ import (
 	"os"
 )
 
+// Config содержит параметры запуска сервиса сокращения URL.
 type Config struct {
 	HostAddr     string
 	BaseUrl      string
@@ -15,6 +17,7 @@ type Config struct {
 	AuditURL     string
 }
 
+// NewConfig разбирает флаги и переменные окружения и возвращает Config.
 func NewConfig() *Config {
 	cfg := &Config{}
 	flag.StringVar(&cfg.HostAddr, "a", "localhost:8080", "HTTP server address")

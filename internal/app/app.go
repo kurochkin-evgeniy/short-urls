@@ -1,3 +1,4 @@
+// Package app связывает конфигурацию, хранилище, обработчики и HTTP-сервер.
 package app
 
 import (
@@ -20,11 +21,13 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// ShortUrlApp — корневой объект приложения.
 type ShortUrlApp struct {
 	cfg             *config.Config
 	shortUrlService *service.ShortUrlService
 }
 
+// NewShortUrlApp загружает конфигурацию и подготавливает экземпляр приложения.
 func NewShortUrlApp() *ShortUrlApp {
 	cfg := config.NewConfig()
 	return &ShortUrlApp{
@@ -32,6 +35,7 @@ func NewShortUrlApp() *ShortUrlApp {
 	}
 }
 
+// Start собирает зависимости, регистрирует маршруты и запускает HTTP-сервер.
 func (a *ShortUrlApp) Start() error {
 	logging.LoggingInit()
 	defer logging.LoggingDone()

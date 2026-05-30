@@ -1,3 +1,4 @@
+// Package repository определяет интерфейсы и реализации хранилища коротких URL.
 package repository
 
 import (
@@ -7,6 +8,7 @@ import (
 	"sync"
 )
 
+// KeyValueStorage сохраняет и извлекает соответствия коротких URL.
 type KeyValueStorage interface {
 	InsertNewValue(key string, value string, userID string) (bool, string, error)
 	InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error)
@@ -15,20 +17,25 @@ type KeyValueStorage interface {
 	MarkURLsDeletedBatch(userID string, shortURLs []string) error
 }
 
+// BatchInsertItem описывает одну запись в пакетной операции вставки.
 type BatchInsertItem struct {
 	Key   string
 	Value string
 }
+
+// BatchInsertResult описывает результат вставки одного элемента пакета.
 type BatchInsertResult struct {
 	Inserted    bool
 	ExistingKey string
 }
 
+// UserURL связывает короткий идентификатор с оригинальным URL в списке пользователя.
 type UserURL struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
+// MapKeyValueStorage — in-memory реализация KeyValueStorage с опциональной записью в файл.
 type MapKeyValueStorage struct {
 	mu            sync.RWMutex
 	dict          map[string]string
@@ -39,6 +46,7 @@ type MapKeyValueStorage struct {
 	permanentFile string
 }
 
+// Filerecord — JSON-представление сохранённого URL на диске.
 type Filerecord struct {
 	UUID        int    `json:"uuid"`
 	ShortURL    string `json:"short_url"`
@@ -46,6 +54,7 @@ type Filerecord struct {
 	IsDeleted   bool   `json:"is_deleted"`
 }
 
+// NewMapKeyValueStorage возвращает пустое in-memory хранилище.
 func NewMapKeyValueStorage() KeyValueStorage {
 
 	return &MapKeyValueStorage{
@@ -57,6 +66,7 @@ func NewMapKeyValueStorage() KeyValueStorage {
 	}
 }
 
+// NewMapKeyValuePermanentStorage загружает данные из path и сохраняет изменения обратно в файл.
 func NewMapKeyValuePermanentStorage(path string) KeyValueStorage {
 	st := &MapKeyValueStorage{
 		dict:          make(map[string]string),

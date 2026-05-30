@@ -7,11 +7,13 @@ import (
 	"time"
 )
 
+// URLObserver отправляет события аудита на удалённый HTTP-эндпоинт методом POST.
 type URLObserver struct {
 	url    string
 	client *http.Client
 }
 
+// NewURLObserver создаёт наблюдателя, отправляющего события POST-запросом на url.
 func NewURLObserver(url string) *URLObserver {
 	return &URLObserver{
 		url: url,
@@ -21,6 +23,7 @@ func NewURLObserver(url string) *URLObserver {
 	}
 }
 
+// Notify отправляет событие JSON POST-запросом на настроенный URL.
 func (u *URLObserver) Notify(event Event) {
 	data, err := json.Marshal(event)
 	if err != nil {

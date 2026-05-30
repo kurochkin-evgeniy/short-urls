@@ -6,15 +6,18 @@ import (
 	"sync"
 )
 
+// FileObserver дописывает события аудита в локальный файл в формате JSON Lines.
 type FileObserver struct {
 	path string
 	mu   sync.Mutex
 }
 
+// NewFileObserver создаёт наблюдателя, записывающего события в path.
 func NewFileObserver(path string) *FileObserver {
 	return &FileObserver{path: path}
 }
 
+// Notify дописывает событие в виде JSON-строки в настроенный файл.
 func (f *FileObserver) Notify(event Event) {
 	data, err := json.Marshal(event)
 	if err != nil {

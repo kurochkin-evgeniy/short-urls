@@ -1,14 +1,19 @@
+// Package audit реализует паттерн «Наблюдатель» для аудита запросов.
 package audit
 
 import "time"
 
+// Action описывает тип аудируемого запроса.
 type Action string
 
 const (
+	// ActionShorten отправляется при создании короткой ссылки.
 	ActionShorten Action = "shorten"
-	ActionFollow  Action = "follow"
+	// ActionFollow отправляется при переходе по короткой ссылке.
+	ActionFollow Action = "follow"
 )
 
+// Event — JSON-сообщение, отправляемое приёмникам аудита.
 type Event struct {
 	TS     int64  `json:"ts"`
 	Action Action `json:"action"`
@@ -16,18 +21,23 @@ type Event struct {
 	URL    string `json:"url"`
 }
 
+// Observer получает события аудита от Subject.
 type Observer interface {
 	Notify(event Event)
 }
 
+// Subject уведомляет зарегистрированных наблюдателей о событиях аудита.
 type Subject struct {
 	observers []Observer
 }
 
+// NewSubject создаёт субъект, пересылающий события указанным наблюдателям.
 func NewSubject(observers ...Observer) *Subject {
 	return &Subject{observers: observers}
 }
 
+// NewSubjectFromConfig создаёт субъект из настроек файла и удалённого URL аудита.
+// Возвращает nil, если оба параметра пусты.
 func NewSubjectFromConfig(auditFile, auditURL string) *Subject {
 	var observers []Observer
 	if auditFile != "" {
@@ -42,6 +52,7 @@ func NewSubjectFromConfig(auditFile, auditURL string) *Subject {
 	return NewSubject(observers...)
 }
 
+// Notify формирует событие и отправляет его всем зарегистрированным наблюдателям.
 func (s *Subject) Notify(action Action, userID, url string) {
 	if s == nil {
 		return
