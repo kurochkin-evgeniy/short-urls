@@ -17,10 +17,10 @@ var migrationsFS embed.FS
 
 // Storage maps a row in short_urls (PostgreSQL column tags).
 type Storage struct {
-	UUID         string `db:"user_id"`
-	ShortURL     string `db:"short_url"`
-	OriginalURL  string `db:"original_url"`
-	DeletedFlag  bool   `db:"is_deleted"`
+	UUID        string `db:"user_id"`
+	ShortURL    string `db:"short_url"`
+	OriginalURL string `db:"original_url"`
+	DeletedFlag bool   `db:"is_deleted"`
 }
 
 type PostgresKeyValueStorage struct {
