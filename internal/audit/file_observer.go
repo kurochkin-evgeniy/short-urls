@@ -6,19 +6,30 @@ import (
 	"sync"
 )
 
+var auditNewline = []byte{'\n'}
+
 // FileObserver дописывает события аудита в локальный файл в формате JSON Lines.
 type FileObserver struct {
-	path string
+	file *os.File
 	mu   sync.Mutex
 }
 
 // NewFileObserver создаёт наблюдателя, записывающего события в path.
+// Файл открывается один раз при создании и остаётся открытым на время жизни наблюдателя.
 func NewFileObserver(path string) *FileObserver {
-	return &FileObserver{path: path}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return &FileObserver{}
+	}
+	return &FileObserver{file: file}
 }
 
 // Notify дописывает событие в виде JSON-строки в настроенный файл.
 func (f *FileObserver) Notify(event Event) {
+	if f.file == nil {
+		return
+	}
+
 	data, err := json.Marshal(event)
 	if err != nil {
 		return
@@ -27,11 +38,18 @@ func (f *FileObserver) Notify(event Event) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	file, err := os.OpenFile(f.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	defer file.Close()
+	_, _ = f.file.Write(data)
+	_, _ = f.file.Write(auditNewline)
+}
 
-	_, _ = file.Write(append(data, '\n'))
+// Close закрывает файл аудита. Повторный вызов безопасен.
+func (f *FileObserver) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.file == nil {
+		return nil
+	}
+	err := f.file.Close()
+	f.file = nil
+	return err
 }

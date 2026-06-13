@@ -43,8 +43,9 @@ func TestNewSubjectFromConfigEmpty(t *testing.T) {
 func TestNewSubjectFromConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
-	subject := NewSubjectFromConfig(path, "")
-	require.NotNil(t, subject)
+	observer := NewFileObserver(path)
+	defer observer.Close()
+	subject := NewSubject(observer)
 
 	subject.Notify(ActionShorten, "user-1", "https://example.com")
 
@@ -60,6 +61,7 @@ func TestFileObserverNotify(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 	observer := NewFileObserver(path)
+	defer observer.Close()
 
 	observer.Notify(Event{
 		TS:     123,
