@@ -1,3 +1,4 @@
+// Package middleware предоставляет HTTP-middleware для логирования, аутентификации и распаковки.
 package middleware
 
 import (
@@ -26,6 +27,7 @@ const (
 	defaultCookieSecret              = "short-urls-secret"
 )
 
+// LoggingMiddleware логирует метод, путь, код ответа и длительность запроса.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -40,10 +42,11 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// DecompressRequestMiddleware прозрачно распаковывает тело запроса, сжатое gzip.
 func DecompressRequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Encoding") == "gzip" {
-			// Wrap the request body with a gzip reader
+			// Оборачиваем тело запроса gzip-ридером.
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
 				http.Error(w, "Bad request", http.StatusBadRequest)
@@ -51,17 +54,18 @@ func DecompressRequestMiddleware(next http.Handler) http.Handler {
 			}
 			defer gz.Close()
 
-			// Replace the original request body with the decompressed one
+			// Заменяем исходное тело запроса распакованным.
 			r.Body = gz
-			// Also, update the Content-Length and remove Content-Encoding headers
+			// Удаляем заголовки Content-Encoding и Content-Length.
 			r.Header.Del("Content-Encoding")
 			r.Header.Del("Content-Length")
 		}
-		// Continue to the next handler
+		// Передаём управление следующему обработчику.
 		next.ServeHTTP(w, r)
 	})
 }
 
+// AuthMiddleware назначает идентификатор пользователя через подписанную cookie и сохраняет его в контексте запроса.
 func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 	secretToUse := secret
 	if secretToUse == "" {
@@ -104,6 +108,7 @@ func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 	}
 }
 
+// UserIDFromContext возвращает идентификатор пользователя, установленный AuthMiddleware.
 func UserIDFromContext(ctx context.Context) string {
 	value := ctx.Value(userIDContextKey)
 	if value == nil {
@@ -116,6 +121,7 @@ func UserIDFromContext(ctx context.Context) string {
 	return userID
 }
 
+// UserCookieWasPresent сообщает, была ли в запросе cookie user_token.
 func UserCookieWasPresent(ctx context.Context) bool {
 	value := ctx.Value(userCookieSeenContext)
 	if value == nil {
@@ -128,6 +134,7 @@ func UserCookieWasPresent(ctx context.Context) bool {
 	return wasPresent
 }
 
+// UserCookieHasNoID сообщает, что cookie была передана, но не содержала идентификатор пользователя.
 func UserCookieHasNoID(ctx context.Context) bool {
 	value := ctx.Value(userCookieNoIDContext)
 	if value == nil {

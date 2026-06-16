@@ -1,15 +1,20 @@
+// Package service реализует бизнес-логику сокращения URL.
 package service
 
 import (
 	"math/rand"
+	"short-urls/internal/audit"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
+	"strings"
 	"time"
 )
 
+// ShortUrlService координирует хранилище, генерацию URL и уведомления аудита.
 type ShortUrlService struct {
 	storage repository.KeyValueStorage
 	baseUrl string
+	audit   *audit.Subject
 
 	deleteQueue chan deleteQueueJob
 }
@@ -19,23 +24,39 @@ type deleteQueueJob struct {
 	shortIDs []string
 }
 
+// CreateShortURLResult содержит результат одной операции сокращения.
 type CreateShortURLResult struct {
 	ShortURL    string
 	WasInserted bool
 }
 
-const defaultDeleteQueueBuf = 4096
+const defaultDeleteQueueBuf = 128
 
-func NewShortUrlService(baseURL string, storage repository.KeyValueStorage) *ShortUrlService {
+// NewShortUrlService создаёт сервис на основе хранилища и необязательного субъекта аудита.
+func NewShortUrlService(baseURL string, storage repository.KeyValueStorage, auditSubject ...*audit.Subject) *ShortUrlService {
 	s := &ShortUrlService{
 		storage:     storage,
 		baseUrl:     baseURL,
 		deleteQueue: make(chan deleteQueueJob, defaultDeleteQueueBuf),
 	}
+	if len(auditSubject) > 0 {
+		s.audit = auditSubject[0]
+	}
 	go s.runDeleteQueueConsumer()
 	return s
 }
 
+// AuditShorten записывает успешное создание URL во все настроенные приёмники аудита.
+func (s *ShortUrlService) AuditShorten(originalURL, userID string) {
+	s.audit.Notify(audit.ActionShorten, userID, originalURL)
+}
+
+// AuditFollow записывает успешный переход по ссылке во все настроенные приёмники аудита.
+func (s *ShortUrlService) AuditFollow(originalURL, userID string) {
+	s.audit.Notify(audit.ActionFollow, userID, originalURL)
+}
+
+// CreateShortUrl генерирует короткую ссылку или возвращает существующую для данного URL.
 func (s *ShortUrlService) CreateShortUrl(url string, userID string) (CreateShortURLResult, error) {
 
 	for {
@@ -46,19 +67,20 @@ func (s *ShortUrlService) CreateShortUrl(url string, userID string) (CreateShort
 		}
 		if inserted {
 			return CreateShortURLResult{
-				ShortURL:    s.baseUrl + "/" + id,
+				ShortURL:    s.buildShortURL(id),
 				WasInserted: true,
 			}, nil
 		}
 		if existingID != "" {
 			return CreateShortURLResult{
-				ShortURL:    s.baseUrl + "/" + existingID,
+				ShortURL:    s.buildShortURL(existingID),
 				WasInserted: false,
 			}, nil
 		}
 	}
 }
 
+// CreateBatchShortUrls генерирует короткие ссылки для пакета оригинальных URL.
 func (s *ShortUrlService) CreateBatchShortUrls(urls []string, userID string) ([]string, error) {
 
 	for {
@@ -73,15 +95,13 @@ func (s *ShortUrlService) CreateBatchShortUrls(urls []string, userID string) ([]
 		if err != nil {
 			return nil, err
 		}
-		results := make([]string, 0, len(batchResults))
+		results := make([]string, len(batchResults))
 		for i, storageResult := range batchResults {
 			shortID := items[i].Key
 			if !storageResult.Inserted && storageResult.ExistingKey != "" {
 				shortID = storageResult.ExistingKey
 			}
-			results = append(results,
-				s.baseUrl+"/"+shortID,
-			)
+			results[i] = s.buildShortURL(shortID)
 		}
 		return results, nil
 	}
@@ -92,12 +112,12 @@ const (
 	deleteFlushTickerDur = 500 * time.Millisecond
 )
 
-// LookupShortURL returns the stored URL, whether it is soft-deleted, and whether the short id exists.
+// LookupShortURL возвращает сохранённый URL, признак мягкого удаления и факт существования идентификатора.
 func (s *ShortUrlService) LookupShortURL(id string) (originalURL string, isDeleted bool, found bool) {
 	return s.storage.LookupShortURL(id)
 }
 
-// QueueUserURLsDeletion accepts ownership-checked soft deletes; work continues asynchronously.
+// QueueUserURLsDeletion принимает запрос на мягкое удаление; обработка продолжается асинхронно.
 func (s *ShortUrlService) QueueUserURLsDeletion(userID string, shortIDs []string) {
 	if len(shortIDs) == 0 {
 		return
@@ -153,29 +173,40 @@ func (s *ShortUrlService) flushDeleteBatch(userID string, batch []string) {
 	}
 }
 
+// GetUserURLs возвращает все активные короткие ссылки пользователя.
 func (s *ShortUrlService) GetUserURLs(userID string) ([]repository.UserURL, error) {
 	storageItems, err := s.storage.GetUserURLs(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]repository.UserURL, 0, len(storageItems))
-	for _, item := range storageItems {
-		result = append(result, repository.UserURL{
-			ShortURL:    s.baseUrl + "/" + item.ShortURL,
+	result := make([]repository.UserURL, len(storageItems))
+	for i, item := range storageItems {
+		result[i] = repository.UserURL{
+			ShortURL:    s.buildShortURL(item.ShortURL),
 			OriginalURL: item.OriginalURL,
-		})
+		}
 	}
 
 	return result, nil
 }
 
+func (s *ShortUrlService) buildShortURL(id string) string {
+	var b strings.Builder
+	b.Grow(len(s.baseUrl) + 1 + len(id))
+	b.WriteString(s.baseUrl)
+	b.WriteByte('/')
+	b.WriteString(id)
+	return b.String()
+}
+
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const shortIDLen = 6
 
 func randStringBytes(n int) string {
-	b := make([]byte, n)
-	for i := range b {
+	var b [shortIDLen]byte
+	for i := range b[:n] {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
-	return string(b)
+	return string(b[:n])
 }

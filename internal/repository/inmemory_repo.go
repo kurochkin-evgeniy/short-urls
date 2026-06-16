@@ -1,3 +1,4 @@
+// Package repository определяет интерфейсы и реализации хранилища коротких URL.
 package repository
 
 import (
@@ -7,6 +8,7 @@ import (
 	"sync"
 )
 
+// KeyValueStorage сохраняет и извлекает соответствия коротких URL.
 type KeyValueStorage interface {
 	InsertNewValue(key string, value string, userID string) (bool, string, error)
 	InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error)
@@ -15,28 +17,36 @@ type KeyValueStorage interface {
 	MarkURLsDeletedBatch(userID string, shortURLs []string) error
 }
 
+// BatchInsertItem описывает одну запись в пакетной операции вставки.
 type BatchInsertItem struct {
 	Key   string
 	Value string
 }
+
+// BatchInsertResult описывает результат вставки одного элемента пакета.
 type BatchInsertResult struct {
 	Inserted    bool
 	ExistingKey string
 }
 
+// UserURL связывает короткий идентификатор с оригинальным URL в списке пользователя.
 type UserURL struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
+// MapKeyValueStorage — in-memory реализация KeyValueStorage с опциональной записью в файл.
 type MapKeyValueStorage struct {
 	mu            sync.RWMutex
 	dict          map[string]string
 	urlOwners     map[string]string
+	originalToKey map[string]string
+	userKeys      map[string][]string
 	deleted       map[string]bool
 	permanentFile string
 }
 
+// Filerecord — JSON-представление сохранённого URL на диске.
 type Filerecord struct {
 	UUID        int    `json:"uuid"`
 	ShortURL    string `json:"short_url"`
@@ -44,19 +54,25 @@ type Filerecord struct {
 	IsDeleted   bool   `json:"is_deleted"`
 }
 
+// NewMapKeyValueStorage возвращает пустое in-memory хранилище.
 func NewMapKeyValueStorage() KeyValueStorage {
 
 	return &MapKeyValueStorage{
-		dict:      make(map[string]string),
-		urlOwners: make(map[string]string),
-		deleted:   make(map[string]bool),
+		dict:          make(map[string]string),
+		urlOwners:     make(map[string]string),
+		originalToKey: make(map[string]string),
+		userKeys:      make(map[string][]string),
+		deleted:       make(map[string]bool),
 	}
 }
 
+// NewMapKeyValuePermanentStorage загружает данные из path и сохраняет изменения обратно в файл.
 func NewMapKeyValuePermanentStorage(path string) KeyValueStorage {
 	st := &MapKeyValueStorage{
 		dict:          make(map[string]string),
 		urlOwners:     make(map[string]string),
+		originalToKey: make(map[string]string),
+		userKeys:      make(map[string][]string),
 		deleted:       make(map[string]bool),
 		permanentFile: path,
 	}
@@ -68,10 +84,8 @@ func (a *MapKeyValueStorage) InsertNewValue(key string, value string, userID str
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	for existingKey, existingValue := range a.dict {
-		if existingValue == value {
-			return false, existingKey, nil
-		}
+	if existingKey, ok := a.originalToKey[value]; ok {
+		return false, existingKey, nil
 	}
 
 	if _, ok := a.dict[key]; ok {
@@ -79,6 +93,8 @@ func (a *MapKeyValueStorage) InsertNewValue(key string, value string, userID str
 	}
 	a.dict[key] = value
 	a.urlOwners[key] = userID
+	a.originalToKey[value] = key
+	a.userKeys[userID] = append(a.userKeys[userID], key)
 	delete(a.deleted, key)
 	if err := a.saveToFile(); err != nil {
 		return false, "", err
@@ -90,28 +106,24 @@ func (a *MapKeyValueStorage) InsertNewValue(key string, value string, userID str
 func (a *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	results := make([]BatchInsertResult, 0, len(items))
-	for _, item := range items {
+	results := make([]BatchInsertResult, len(items))
+	for i, item := range items {
 		inserted := false
 		existingKey := ""
-		for currentKey, currentValue := range a.dict {
-			if currentValue == item.Value {
-				existingKey = currentKey
-				break
-			}
+		if key, ok := a.originalToKey[item.Value]; ok {
+			existingKey = key
+		} else if _, exists := a.dict[item.Key]; !exists {
+			a.dict[item.Key] = item.Value
+			a.urlOwners[item.Key] = userID
+			a.originalToKey[item.Value] = item.Key
+			a.userKeys[userID] = append(a.userKeys[userID], item.Key)
+			delete(a.deleted, item.Key)
+			inserted = true
 		}
-			if existingKey == "" {
-				if _, exists := a.dict[item.Key]; !exists {
-					a.dict[item.Key] = item.Value
-					a.urlOwners[item.Key] = userID
-					delete(a.deleted, item.Key)
-					inserted = true
-				}
-			}
-		results = append(results, BatchInsertResult{
+		results[i] = BatchInsertResult{
 			Inserted:    inserted,
 			ExistingKey: existingKey,
-		})
+		}
 	}
 	if err := a.saveToFile(); err != nil {
 		return nil, err
@@ -144,9 +156,10 @@ func (a *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	result := make([]UserURL, 0)
-	for shortURL, ownerID := range a.urlOwners {
-		if ownerID == userID && !a.deleted[shortURL] {
+	keys := a.userKeys[userID]
+	result := make([]UserURL, 0, len(keys))
+	for _, shortURL := range keys {
+		if a.urlOwners[shortURL] == userID && !a.deleted[shortURL] {
 			result = append(result, UserURL{
 				ShortURL:    shortURL,
 				OriginalURL: a.dict[shortURL],
@@ -178,6 +191,7 @@ func (a *MapKeyValueStorage) loadFromFile() {
 
 	for _, value := range result {
 		a.dict[value.ShortURL] = value.OriginalURL
+		a.originalToKey[value.OriginalURL] = value.ShortURL
 		if value.IsDeleted {
 			a.deleted[value.ShortURL] = true
 		}

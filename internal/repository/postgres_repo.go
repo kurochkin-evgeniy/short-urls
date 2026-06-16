@@ -15,18 +15,20 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Storage maps a row in short_urls (PostgreSQL column tags).
+// Storage соответствует строке таблицы short_urls в PostgreSQL.
 type Storage struct {
-	UUID         string `db:"user_id"`
-	ShortURL     string `db:"short_url"`
-	OriginalURL  string `db:"original_url"`
-	DeletedFlag  bool   `db:"is_deleted"`
+	UUID        string `db:"user_id"`
+	ShortURL    string `db:"short_url"`
+	OriginalURL string `db:"original_url"`
+	DeletedFlag bool   `db:"is_deleted"`
 }
 
+// PostgresKeyValueStorage реализует KeyValueStorage с использованием PostgreSQL.
 type PostgresKeyValueStorage struct {
 	db *sql.DB
 }
 
+// NewPostgresKeyValueStorage создаёт хранилище на PostgreSQL с заданным подключением.
 func NewPostgresKeyValueStorage(db *sql.DB) KeyValueStorage {
 	return &PostgresKeyValueStorage{db: db}
 }
@@ -161,6 +163,7 @@ WHERE user_id = $1
 	return result, nil
 }
 
+// RunPostgresMigrations применяет встроенные SQL-миграции к базе данных.
 func RunPostgresMigrations(db *sql.DB) error {
 	logging.Sugar.Debugw("Preparing embedded migration source")
 	source, err := iofs.New(migrationsFS, "migrations")

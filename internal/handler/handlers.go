@@ -1,3 +1,4 @@
+// Package handler предоставляет HTTP-обработчики эндпоинтов сервиса сокращения URL.
 package handler
 
 import (
@@ -12,24 +13,29 @@ import (
 	"time"
 )
 
+// CreateShortUrlRequest — тело JSON-запроса для POST /api/shorten.
 type CreateShortUrlRequest struct {
 	Url string `json:"url,omitempty"`
 }
 
+// CreateShortUrlResponse — тело JSON-ответа для POST /api/shorten.
 type CreateShortUrlResponse struct {
 	Result string `json:"result,omitempty"`
 }
 
+// BatchShortUrlRequest описывает один элемент пакетного запроса на сокращение.
 type BatchShortUrlRequest struct {
 	CorrelationID string `json:"correlation_id"`
 	OriginalURL   string `json:"original_url"`
 }
 
+// BatchShortUrlResponse описывает один элемент пакетного ответа.
 type BatchShortUrlResponse struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
 }
 
+// UserURLResponse описывает пару URL, возвращаемую GET /api/user/urls.
 type UserURLResponse struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
@@ -44,7 +50,8 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 		switch request.Header.Get("content-type") {
 		case "text/plain":
 			{
-				createResult, err := s.CreateShortUrl(string(body), userID)
+				originalURL := string(body)
+				createResult, err := s.CreateShortUrl(originalURL, userID)
 				if err != nil {
 					logging.Sugar.Errorw("Failed to create short url", "error", err)
 					responce.WriteHeader(http.StatusInternalServerError)
@@ -57,6 +64,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 					responce.WriteHeader(http.StatusConflict)
 				}
 				responce.Write([]byte(createResult.ShortURL))
+				s.AuditShorten(originalURL, userID)
 				return
 			}
 		case "application/json":
@@ -86,6 +94,7 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s
 						responce.WriteHeader(http.StatusConflict)
 					}
 					responce.Write(respStr)
+					s.AuditShorten(r.Url, userID)
 				}
 			}
 		}
@@ -194,6 +203,7 @@ func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, s *s
 	}
 	responce.Header().Add("Location", url)
 	responce.WriteHeader(http.StatusTemporaryRedirect)
+	s.AuditFollow(url, middleware.UserIDFromContext(request.Context()))
 }
 
 func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
@@ -224,36 +234,42 @@ func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, s
 	responce.WriteHeader(http.StatusAccepted)
 }
 
+// HandleRedirectRequest обрабатывает GET /{id} и перенаправляет на оригинальный URL.
 func HandleRedirectRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleRedirectUrl(responce, request, s)
 	}
 }
 
+// HandleCreateShortUrRequest обрабатывает POST / и POST /api/shorten.
 func HandleCreateShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleCreateShortUrl(responce, request, s)
 	}
 }
 
+// HandleCreateBatchShortUrRequest обрабатывает POST /api/shorten/batch.
 func HandleCreateBatchShortUrRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleCreateBatchShortUrl(responce, request, s)
 	}
 }
 
+// HandleGetUserURLsRequest обрабатывает GET /api/user/urls.
 func HandleGetUserURLsRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleGetUserURLs(responce, request, s)
 	}
 }
 
+// HandleDeleteUserURLsRequest обрабатывает DELETE /api/user/urls.
 func HandleDeleteUserURLsRequest(s *service.ShortUrlService) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		handleDeleteUserURLs(responce, request, s)
 	}
 }
 
+// HandlePing обрабатывает GET /ping и проверяет доступность PostgreSQL.
 func HandlePing(db *sql.DB) http.HandlerFunc {
 	return func(responce http.ResponseWriter, request *http.Request) {
 		if db == nil {

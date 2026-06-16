@@ -1,3 +1,4 @@
+// Package app связывает конфигурацию, хранилище, обработчики и HTTP-сервер.
 package app
 
 import (
@@ -5,12 +6,14 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"short-urls/internal/config"
 	"short-urls/internal/handler"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
 
+	"short-urls/internal/audit"
 	"short-urls/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
@@ -18,11 +21,13 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// ShortUrlApp — корневой объект приложения.
 type ShortUrlApp struct {
 	cfg             *config.Config
 	shortUrlService *service.ShortUrlService
 }
 
+// NewShortUrlApp загружает конфигурацию и подготавливает экземпляр приложения.
 func NewShortUrlApp() *ShortUrlApp {
 	cfg := config.NewConfig()
 	return &ShortUrlApp{
@@ -30,10 +35,18 @@ func NewShortUrlApp() *ShortUrlApp {
 	}
 }
 
+// Start собирает зависимости, регистрирует маршруты и запускает HTTP-сервер.
 func (a *ShortUrlApp) Start() error {
 	logging.LoggingInit()
 	defer logging.LoggingDone()
 	logging.Sugar.Infow("Starting short URL service", "address", a.cfg.HostAddr, "base_url", a.cfg.BaseUrl)
+
+	go func() {
+		logging.Sugar.Infow("Starting pprof server", "address", "localhost:6060")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			logging.Sugar.Errorw("pprof server stopped with error", "error", err)
+		}
+	}()
 
 	logging.Sugar.Debugw("Building storage backend")
 	storage, db, err := a.buildStorage()
@@ -47,7 +60,8 @@ func (a *ShortUrlApp) Start() error {
 	}
 
 	logging.Sugar.Debugw("Initializing short URL service")
-	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, storage)
+	auditSubject := audit.NewSubjectFromConfig(a.cfg.AuditFile, a.cfg.AuditURL)
+	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, storage, auditSubject)
 
 	logging.Sugar.Debugw("Configuring HTTP router")
 	r := chi.NewRouter()
