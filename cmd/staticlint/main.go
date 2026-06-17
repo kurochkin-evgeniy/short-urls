@@ -31,6 +31,9 @@
 //     поиск логических ошибок, утечек ресурсов, некорректного API, гонок и других
 //     дефектов. Полный список: https://staticcheck.dev/docs/checks/#SA
 //
+//   - stylecheck (ST1000) — стилевые рекомендации: комментарий к пакету должен
+//     начинаться с имени пакета (класс ST, staticcheck.io).
+//
 //   - exitcheck — пользовательский анализатор: запрещает прямой вызов os.Exit
 //     в функции main пакета main; логику завершения следует выносить в run().
 package main
@@ -42,6 +45,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/multichecker"
 	"honnef.co/go/tools/staticcheck"
+	"honnef.co/go/tools/stylecheck"
 	"honnef.co/go/tools/unused"
 )
 
@@ -58,5 +62,6 @@ func analyzers() []*analysis.Analyzer {
 	for _, a := range staticcheck.Analyzers {
 		checks = append(checks, a.Analyzer)
 	}
+	checks = append(checks, stylecheck.Analyzers[0].Analyzer) // ST1000
 	return checks
 }
