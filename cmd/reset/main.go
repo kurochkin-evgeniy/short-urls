@@ -25,8 +25,8 @@ type structTarget struct {
 }
 
 type resetContext struct {
-	pkg         *types.Package
-	resetTypes  map[string]map[string]bool
+	pkg        *types.Package
+	resetTypes map[string]map[string]bool
 }
 
 func main() {
