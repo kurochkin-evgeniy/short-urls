@@ -12,11 +12,10 @@ import (
 
 // ShortUrlService координирует хранилище, генерацию URL и уведомления аудита.
 type ShortUrlService struct {
-	storage repository.KeyValueStorage
-	baseUrl string
-	audit   *audit.Subject
-
 	deleteQueue chan deleteQueueJob
+	audit       *audit.Subject
+	storage     repository.KeyValueStorage
+	baseUrl     string
 }
 
 type deleteQueueJob struct {
