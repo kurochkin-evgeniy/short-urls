@@ -1,14 +1,17 @@
 package main
 
 import (
+	"log"
+
 	"short-urls/internal/app"
 )
 
 func main() {
-
-	shortUrlApp := app.NewShortUrlApp()
-	err := shortUrlApp.Start()
-	if err != nil {
-		panic(err)
+	if err := run(); err != nil {
+		log.Fatal(err)
 	}
+}
+
+func run() error {
+	return app.NewShortUrlApp().Start()
 }

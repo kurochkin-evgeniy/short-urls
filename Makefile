@@ -1,4 +1,9 @@
 
+.PHONY: staticlint
+staticlint:
+	go build -o staticlint ./cmd/staticlint
+	go run ./cmd/staticlint ./...
+
 .PHONY: test
 test:
 	go test -v ./...
