@@ -82,29 +82,26 @@ func (s *ShortUrlService) CreateShortUrl(url string, userID string) (CreateShort
 
 // CreateBatchShortUrls генерирует короткие ссылки для пакета оригинальных URL.
 func (s *ShortUrlService) CreateBatchShortUrls(urls []string, userID string) ([]string, error) {
-
-	for {
-		items := make([]repository.BatchInsertItem, 0, len(urls))
-		for _, url := range urls {
-			items = append(items, repository.BatchInsertItem{
-				Key:   randStringBytes(6),
-				Value: url,
-			})
-		}
-		batchResults, err := s.storage.InsertNewValuesBatch(items, userID)
-		if err != nil {
-			return nil, err
-		}
-		results := make([]string, len(batchResults))
-		for i, storageResult := range batchResults {
-			shortID := items[i].Key
-			if !storageResult.Inserted && storageResult.ExistingKey != "" {
-				shortID = storageResult.ExistingKey
-			}
-			results[i] = s.buildShortURL(shortID)
-		}
-		return results, nil
+	items := make([]repository.BatchInsertItem, 0, len(urls))
+	for _, url := range urls {
+		items = append(items, repository.BatchInsertItem{
+			Key:   randStringBytes(6),
+			Value: url,
+		})
 	}
+	batchResults, err := s.storage.InsertNewValuesBatch(items, userID)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]string, len(batchResults))
+	for i, storageResult := range batchResults {
+		shortID := items[i].Key
+		if !storageResult.Inserted && storageResult.ExistingKey != "" {
+			shortID = storageResult.ExistingKey
+		}
+		results[i] = s.buildShortURL(shortID)
+	}
+	return results, nil
 }
 
 const (
