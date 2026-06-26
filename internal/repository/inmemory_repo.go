@@ -87,44 +87,44 @@ func NewMapKeyValuePermanentStorage(path string) KeyValueStorage {
 	return st
 }
 
-func (a *MapKeyValueStorage) InsertNewValue(key string, value string, userID string) (bool, string, error) {
-	a.Lock()
-	defer a.Unlock()
+func (s *MapKeyValueStorage) InsertNewValue(key string, value string, userID string) (bool, string, error) {
+	s.Lock()
+	defer s.Unlock()
 
-	if existingKey, ok := a.maps.originalToKey[value]; ok {
+	if existingKey, ok := s.maps.originalToKey[value]; ok {
 		return false, existingKey, nil
 	}
 
-	if _, ok := a.maps.dict[key]; ok {
+	if _, ok := s.maps.dict[key]; ok {
 		return false, "", nil
 	}
-	a.maps.dict[key] = value
-	a.maps.urlOwners[key] = userID
-	a.maps.originalToKey[value] = key
-	a.maps.userKeys[userID] = append(a.maps.userKeys[userID], key)
-	delete(a.maps.deleted, key)
-	if err := a.saveToFile(); err != nil {
+	s.maps.dict[key] = value
+	s.maps.urlOwners[key] = userID
+	s.maps.originalToKey[value] = key
+	s.maps.userKeys[userID] = append(s.maps.userKeys[userID], key)
+	delete(s.maps.deleted, key)
+	if err := s.saveToFile(); err != nil {
 		return false, "", err
 	}
 
 	return true, "", nil
 }
 
-func (a *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error) {
-	a.Lock()
-	defer a.Unlock()
+func (s *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error) {
+	s.Lock()
+	defer s.Unlock()
 	results := make([]BatchInsertResult, len(items))
 	for i, item := range items {
 		inserted := false
 		existingKey := ""
-		if key, ok := a.maps.originalToKey[item.Value]; ok {
+		if key, ok := s.maps.originalToKey[item.Value]; ok {
 			existingKey = key
-		} else if _, exists := a.maps.dict[item.Key]; !exists {
-			a.maps.dict[item.Key] = item.Value
-			a.maps.urlOwners[item.Key] = userID
-			a.maps.originalToKey[item.Value] = item.Key
-			a.maps.userKeys[userID] = append(a.maps.userKeys[userID], item.Key)
-			delete(a.maps.deleted, item.Key)
+		} else if _, exists := s.maps.dict[item.Key]; !exists {
+			s.maps.dict[item.Key] = item.Value
+			s.maps.urlOwners[item.Key] = userID
+			s.maps.originalToKey[item.Value] = item.Key
+			s.maps.userKeys[userID] = append(s.maps.userKeys[userID], item.Key)
+			delete(s.maps.deleted, item.Key)
 			inserted = true
 		}
 		results[i] = BatchInsertResult{
@@ -132,44 +132,44 @@ func (a *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userI
 			Inserted:    inserted,
 		}
 	}
-	if err := a.saveToFile(); err != nil {
+	if err := s.saveToFile(); err != nil {
 		return nil, err
 	}
 	return results, nil
 }
 
-func (a *MapKeyValueStorage) LookupShortURL(key string) (string, bool, bool) {
-	a.RLock()
-	defer a.RUnlock()
-	v, ok := a.maps.dict[key]
+func (s *MapKeyValueStorage) LookupShortURL(key string) (string, bool, bool) {
+	s.RLock()
+	defer s.RUnlock()
+	v, ok := s.maps.dict[key]
 	if !ok {
 		return "", false, false
 	}
-	return v, a.maps.deleted[key], true
+	return v, s.maps.deleted[key], true
 }
 
-func (a *MapKeyValueStorage) MarkURLsDeletedBatch(userID string, shortURLs []string) error {
-	a.Lock()
-	defer a.Unlock()
+func (s *MapKeyValueStorage) MarkURLsDeletedBatch(userID string, shortURLs []string) error {
+	s.Lock()
+	defer s.Unlock()
 	for _, short := range shortURLs {
-		if a.maps.urlOwners[short] == userID {
-			a.maps.deleted[short] = true
+		if s.maps.urlOwners[short] == userID {
+			s.maps.deleted[short] = true
 		}
 	}
-	return a.saveToFile()
+	return s.saveToFile()
 }
 
-func (a *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
-	a.RLock()
-	defer a.RUnlock()
+func (s *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
+	s.RLock()
+	defer s.RUnlock()
 
-	keys := a.maps.userKeys[userID]
+	keys := s.maps.userKeys[userID]
 	result := make([]UserURL, 0, len(keys))
 	for _, shortURL := range keys {
-		if a.maps.urlOwners[shortURL] == userID && !a.maps.deleted[shortURL] {
+		if s.maps.urlOwners[shortURL] == userID && !s.maps.deleted[shortURL] {
 			result = append(result, UserURL{
 				ShortURL:    shortURL,
-				OriginalURL: a.maps.dict[shortURL],
+				OriginalURL: s.maps.dict[shortURL],
 			})
 		}
 	}
@@ -177,12 +177,12 @@ func (a *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
 	return result, nil
 }
 
-func (a *MapKeyValueStorage) loadFromFile() {
-	if a.permanentFile == "" {
+func (s *MapKeyValueStorage) loadFromFile() {
+	if s.permanentFile == "" {
 		return
 	}
 
-	fileBytes, err := os.ReadFile(a.permanentFile)
+	fileBytes, err := os.ReadFile(s.permanentFile)
 	if err != nil {
 		logging.Sugar.Infof("Failed ReadFile: Error = %s", err)
 		return
@@ -196,28 +196,28 @@ func (a *MapKeyValueStorage) loadFromFile() {
 	}
 
 	for _, value := range result {
-		a.maps.dict[value.ShortURL] = value.OriginalURL
-		a.maps.originalToKey[value.OriginalURL] = value.ShortURL
+		s.maps.dict[value.ShortURL] = value.OriginalURL
+		s.maps.originalToKey[value.OriginalURL] = value.ShortURL
 		if value.IsDeleted {
-			a.maps.deleted[value.ShortURL] = true
+			s.maps.deleted[value.ShortURL] = true
 		}
 	}
 }
 
-func (a *MapKeyValueStorage) saveToFile() error {
-	if a.permanentFile == "" {
+func (s *MapKeyValueStorage) saveToFile() error {
+	if s.permanentFile == "" {
 		return nil
 	}
 
-	records := make([]Filerecord, 0, len(a.maps.dict))
+	records := make([]Filerecord, 0, len(s.maps.dict))
 
 	index := 0
-	for key, value := range a.maps.dict {
+	for key, value := range s.maps.dict {
 		records = append(records, Filerecord{
 			UUID:        index,
 			ShortURL:    key,
 			OriginalURL: value,
-			IsDeleted:   a.maps.deleted[key],
+			IsDeleted:   s.maps.deleted[key],
 		})
 		index++
 	}
@@ -228,7 +228,7 @@ func (a *MapKeyValueStorage) saveToFile() error {
 		return err
 	}
 
-	err = os.WriteFile(a.permanentFile, jsonData, 0644)
+	err = os.WriteFile(s.permanentFile, jsonData, 0644)
 	if err != nil {
 		logging.Sugar.Errorf("Failed WriteFile: Error = %s", err)
 		return err
