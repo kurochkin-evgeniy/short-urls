@@ -47,7 +47,7 @@ type mapStorage struct {
 type MapKeyValueStorage struct {
 	maps          mapStorage
 	permanentFile string
-	sync.RWMutex
+	mu            sync.RWMutex
 }
 
 // Filerecord — JSON-представление сохранённого URL на диске.
@@ -88,8 +88,8 @@ func NewMapKeyValuePermanentStorage(path string) KeyValueStorage {
 }
 
 func (s *MapKeyValueStorage) InsertNewValue(key string, value string, userID string) (bool, string, error) {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if existingKey, ok := s.maps.originalToKey[value]; ok {
 		return false, existingKey, nil
@@ -111,8 +111,8 @@ func (s *MapKeyValueStorage) InsertNewValue(key string, value string, userID str
 }
 
 func (s *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error) {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	results := make([]BatchInsertResult, len(items))
 	for i, item := range items {
 		inserted := false
@@ -139,8 +139,8 @@ func (s *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userI
 }
 
 func (s *MapKeyValueStorage) LookupShortURL(key string) (string, bool, bool) {
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	v, ok := s.maps.dict[key]
 	if !ok {
 		return "", false, false
@@ -149,8 +149,8 @@ func (s *MapKeyValueStorage) LookupShortURL(key string) (string, bool, bool) {
 }
 
 func (s *MapKeyValueStorage) MarkURLsDeletedBatch(userID string, shortURLs []string) error {
-	s.Lock()
-	defer s.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, short := range shortURLs {
 		if s.maps.urlOwners[short] == userID {
 			s.maps.deleted[short] = true
@@ -160,8 +160,8 @@ func (s *MapKeyValueStorage) MarkURLsDeletedBatch(userID string, shortURLs []str
 }
 
 func (s *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	keys := s.maps.userKeys[userID]
 	result := make([]UserURL, 0, len(keys))
