@@ -15,10 +15,10 @@ const (
 
 // Event — JSON-сообщение, отправляемое приёмникам аудита.
 type Event struct {
-	TS     int64  `json:"ts"`
-	Action Action `json:"action"`
-	UserID string `json:"user_id,omitempty"`
 	URL    string `json:"url"`
+	UserID string `json:"user_id,omitempty"`
+	Action Action `json:"action"`
+	TS     int64  `json:"ts"`
 }
 
 // Observer получает события аудита от Subject.

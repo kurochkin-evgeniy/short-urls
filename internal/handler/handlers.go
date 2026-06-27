@@ -113,7 +113,7 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 	}
 
 	var batchReq []BatchShortUrlRequest
-	if err := json.Unmarshal(body, &batchReq); err != nil {
+	if unmarshalErr := json.Unmarshal(body, &batchReq); unmarshalErr != nil {
 		responce.WriteHeader(http.StatusBadRequest)
 		return
 	}

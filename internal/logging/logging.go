@@ -1,3 +1,4 @@
+// Package logging настраивает структурированный логгер приложения на базе zap.
 package logging
 
 import (

@@ -9,8 +9,8 @@ import (
 
 // URLObserver отправляет события аудита на удалённый HTTP-эндпоинт методом POST.
 type URLObserver struct {
-	url    string
 	client *http.Client
+	url    string
 }
 
 // NewURLObserver создаёт наблюдателя, отправляющего события POST-запросом на url.

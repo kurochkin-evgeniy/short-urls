@@ -25,8 +25,8 @@ type BatchInsertItem struct {
 
 // BatchInsertResult описывает результат вставки одного элемента пакета.
 type BatchInsertResult struct {
-	Inserted    bool
 	ExistingKey string
+	Inserted    bool
 }
 
 // UserURL связывает короткий идентификатор с оригинальным URL в списке пользователя.
@@ -35,134 +35,141 @@ type UserURL struct {
 	OriginalURL string `json:"original_url"`
 }
 
-// MapKeyValueStorage — in-memory реализация KeyValueStorage с опциональной записью в файл.
-type MapKeyValueStorage struct {
-	mu            sync.RWMutex
+type mapStorage struct {
 	dict          map[string]string
+	deleted       map[string]bool
 	urlOwners     map[string]string
 	originalToKey map[string]string
 	userKeys      map[string][]string
-	deleted       map[string]bool
+}
+
+// MapKeyValueStorage — in-memory реализация KeyValueStorage с опциональной записью в файл.
+type MapKeyValueStorage struct {
+	maps          mapStorage
 	permanentFile string
+	mu            sync.RWMutex
 }
 
 // Filerecord — JSON-представление сохранённого URL на диске.
 type Filerecord struct {
-	UUID        int    `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UUID        int    `json:"uuid"`
 	IsDeleted   bool   `json:"is_deleted"`
 }
 
 // NewMapKeyValueStorage возвращает пустое in-memory хранилище.
 func NewMapKeyValueStorage() KeyValueStorage {
-
 	return &MapKeyValueStorage{
-		dict:          make(map[string]string),
-		urlOwners:     make(map[string]string),
-		originalToKey: make(map[string]string),
-		userKeys:      make(map[string][]string),
-		deleted:       make(map[string]bool),
+		maps: mapStorage{
+			dict:          make(map[string]string),
+			urlOwners:     make(map[string]string),
+			originalToKey: make(map[string]string),
+			userKeys:      make(map[string][]string),
+			deleted:       make(map[string]bool),
+		},
 	}
 }
 
 // NewMapKeyValuePermanentStorage загружает данные из path и сохраняет изменения обратно в файл.
 func NewMapKeyValuePermanentStorage(path string) KeyValueStorage {
 	st := &MapKeyValueStorage{
-		dict:          make(map[string]string),
-		urlOwners:     make(map[string]string),
-		originalToKey: make(map[string]string),
-		userKeys:      make(map[string][]string),
-		deleted:       make(map[string]bool),
+		maps: mapStorage{
+			dict:          make(map[string]string),
+			urlOwners:     make(map[string]string),
+			originalToKey: make(map[string]string),
+			userKeys:      make(map[string][]string),
+			deleted:       make(map[string]bool),
+		},
 		permanentFile: path,
 	}
 	st.loadFromFile()
 	return st
 }
 
-func (a *MapKeyValueStorage) InsertNewValue(key string, value string, userID string) (bool, string, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (s *MapKeyValueStorage) InsertNewValue(key string, value string, userID string) (bool, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if existingKey, ok := a.originalToKey[value]; ok {
+	if existingKey, ok := s.maps.originalToKey[value]; ok {
 		return false, existingKey, nil
 	}
 
-	if _, ok := a.dict[key]; ok {
+	if _, ok := s.maps.dict[key]; ok {
 		return false, "", nil
 	}
-	a.dict[key] = value
-	a.urlOwners[key] = userID
-	a.originalToKey[value] = key
-	a.userKeys[userID] = append(a.userKeys[userID], key)
-	delete(a.deleted, key)
-	if err := a.saveToFile(); err != nil {
+	s.maps.dict[key] = value
+	s.maps.urlOwners[key] = userID
+	s.maps.originalToKey[value] = key
+	s.maps.userKeys[userID] = append(s.maps.userKeys[userID], key)
+	delete(s.maps.deleted, key)
+	if err := s.saveToFile(); err != nil {
 		return false, "", err
 	}
 
 	return true, "", nil
 }
 
-func (a *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (s *MapKeyValueStorage) InsertNewValuesBatch(items []BatchInsertItem, userID string) ([]BatchInsertResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	results := make([]BatchInsertResult, len(items))
 	for i, item := range items {
 		inserted := false
 		existingKey := ""
-		if key, ok := a.originalToKey[item.Value]; ok {
+		if key, ok := s.maps.originalToKey[item.Value]; ok {
 			existingKey = key
-		} else if _, exists := a.dict[item.Key]; !exists {
-			a.dict[item.Key] = item.Value
-			a.urlOwners[item.Key] = userID
-			a.originalToKey[item.Value] = item.Key
-			a.userKeys[userID] = append(a.userKeys[userID], item.Key)
-			delete(a.deleted, item.Key)
+		} else if _, exists := s.maps.dict[item.Key]; !exists {
+			s.maps.dict[item.Key] = item.Value
+			s.maps.urlOwners[item.Key] = userID
+			s.maps.originalToKey[item.Value] = item.Key
+			s.maps.userKeys[userID] = append(s.maps.userKeys[userID], item.Key)
+			delete(s.maps.deleted, item.Key)
 			inserted = true
 		}
 		results[i] = BatchInsertResult{
-			Inserted:    inserted,
 			ExistingKey: existingKey,
+			Inserted:    inserted,
 		}
 	}
-	if err := a.saveToFile(); err != nil {
+	if err := s.saveToFile(); err != nil {
 		return nil, err
 	}
 	return results, nil
 }
 
-func (a *MapKeyValueStorage) LookupShortURL(key string) (string, bool, bool) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	v, ok := a.dict[key]
+func (s *MapKeyValueStorage) LookupShortURL(key string) (string, bool, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v, ok := s.maps.dict[key]
 	if !ok {
 		return "", false, false
 	}
-	return v, a.deleted[key], true
+	return v, s.maps.deleted[key], true
 }
 
-func (a *MapKeyValueStorage) MarkURLsDeletedBatch(userID string, shortURLs []string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (s *MapKeyValueStorage) MarkURLsDeletedBatch(userID string, shortURLs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, short := range shortURLs {
-		if a.urlOwners[short] == userID {
-			a.deleted[short] = true
+		if s.maps.urlOwners[short] == userID {
+			s.maps.deleted[short] = true
 		}
 	}
-	return a.saveToFile()
+	return s.saveToFile()
 }
 
-func (a *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+func (s *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	keys := a.userKeys[userID]
+	keys := s.maps.userKeys[userID]
 	result := make([]UserURL, 0, len(keys))
 	for _, shortURL := range keys {
-		if a.urlOwners[shortURL] == userID && !a.deleted[shortURL] {
+		if s.maps.urlOwners[shortURL] == userID && !s.maps.deleted[shortURL] {
 			result = append(result, UserURL{
 				ShortURL:    shortURL,
-				OriginalURL: a.dict[shortURL],
+				OriginalURL: s.maps.dict[shortURL],
 			})
 		}
 	}
@@ -170,13 +177,12 @@ func (a *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
 	return result, nil
 }
 
-func (a *MapKeyValueStorage) loadFromFile() {
-
-	if a.permanentFile == "" {
+func (s *MapKeyValueStorage) loadFromFile() {
+	if s.permanentFile == "" {
 		return
 	}
 
-	fileBytes, err := os.ReadFile(a.permanentFile)
+	fileBytes, err := os.ReadFile(s.permanentFile)
 	if err != nil {
 		logging.Sugar.Infof("Failed ReadFile: Error = %s", err)
 		return
@@ -190,30 +196,28 @@ func (a *MapKeyValueStorage) loadFromFile() {
 	}
 
 	for _, value := range result {
-		a.dict[value.ShortURL] = value.OriginalURL
-		a.originalToKey[value.OriginalURL] = value.ShortURL
+		s.maps.dict[value.ShortURL] = value.OriginalURL
+		s.maps.originalToKey[value.OriginalURL] = value.ShortURL
 		if value.IsDeleted {
-			a.deleted[value.ShortURL] = true
+			s.maps.deleted[value.ShortURL] = true
 		}
 	}
-
 }
 
-func (a *MapKeyValueStorage) saveToFile() error {
-
-	if a.permanentFile == "" {
+func (s *MapKeyValueStorage) saveToFile() error {
+	if s.permanentFile == "" {
 		return nil
 	}
 
-	var records = make([]Filerecord, 0, len(a.dict))
+	records := make([]Filerecord, 0, len(s.maps.dict))
 
 	index := 0
-	for key, value := range a.dict {
+	for key, value := range s.maps.dict {
 		records = append(records, Filerecord{
 			UUID:        index,
 			ShortURL:    key,
 			OriginalURL: value,
-			IsDeleted:   a.deleted[key],
+			IsDeleted:   s.maps.deleted[key],
 		})
 		index++
 	}
@@ -224,7 +228,7 @@ func (a *MapKeyValueStorage) saveToFile() error {
 		return err
 	}
 
-	err = os.WriteFile(a.permanentFile, jsonData, 0644)
+	err = os.WriteFile(s.permanentFile, jsonData, 0644)
 	if err != nil {
 		logging.Sugar.Errorf("Failed WriteFile: Error = %s", err)
 		return err
