@@ -15,6 +15,9 @@ type Config struct {
 	CookieSecret string
 	AuditFile    string
 	AuditURL     string
+	EnableHTTPS  bool
+	TLSCertFile  string
+	TLSKeyFile   string
 }
 
 // NewConfig разбирает флаги и переменные окружения и возвращает Config.
@@ -24,7 +27,9 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.BaseUrl, "b", "http://localhost:8080", "Base URL for shortened links")
 	flag.StringVar(&cfg.FilePath, "f", "", "storage path")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "PostgreSQL DSN")
-	flag.StringVar(&cfg.CookieSecret, "s", "", "Cookie signature secret")
+	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
+	flag.StringVar(&cfg.TLSCertFile, "c", "", "TLS certificate file path")
+	flag.StringVar(&cfg.TLSKeyFile, "k", "", "TLS key file path")
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit log file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit remote server URL")
 	flag.Parse()
@@ -52,6 +57,15 @@ func NewConfig() *Config {
 	}
 	if val, ok := os.LookupEnv("AUDIT_URL"); ok {
 		cfg.AuditURL = val
+	}
+	if _, ok := os.LookupEnv("ENABLE_HTTPS"); ok {
+		cfg.EnableHTTPS = true
+	}
+	if val, ok := os.LookupEnv("TLS_CERT_FILE"); ok {
+		cfg.TLSCertFile = val
+	}
+	if val, ok := os.LookupEnv("TLS_KEY_FILE"); ok {
+		cfg.TLSKeyFile = val
 	}
 
 	return cfg

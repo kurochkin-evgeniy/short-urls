@@ -81,13 +81,25 @@ func (a *ShortUrlApp) Start() error {
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
 	r.Get("/ping", handler.HandlePing(db))
 
-	logging.Sugar.Infow("HTTP server is starting", "address", a.cfg.HostAddr)
-	if err := http.ListenAndServe(a.cfg.HostAddr, r); err != nil {
-		logging.Sugar.Errorw("HTTP server stopped with error", "error", err)
-		return err
+	if a.cfg.EnableHTTPS {
+		logging.Sugar.Infow("HTTPS server is starting",
+			"address", a.cfg.HostAddr,
+			"cert", a.cfg.TLSCertFile,
+			"key", a.cfg.TLSKeyFile,
+		)
+		if err := http.ListenAndServeTLS(a.cfg.HostAddr, a.cfg.TLSCertFile, a.cfg.TLSKeyFile, r); err != nil {
+			logging.Sugar.Errorw("HTTPS server stopped with error", "error", err)
+			return err
+		}
+	} else {
+		logging.Sugar.Infow("HTTP server is starting", "address", a.cfg.HostAddr)
+		if err := http.ListenAndServe(a.cfg.HostAddr, r); err != nil {
+			logging.Sugar.Errorw("HTTP server stopped with error", "error", err)
+			return err
+		}
 	}
 
-	logging.Sugar.Infow("HTTP server stopped")
+	logging.Sugar.Infow("Server stopped")
 	return nil
 }
 
