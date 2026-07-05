@@ -13,6 +13,7 @@ import (
 // ShortUrlService координирует хранилище, генерацию URL и уведомления аудита.
 type ShortUrlService struct {
 	deleteQueue chan deleteQueueJob
+	deleteDone  chan struct{}
 	audit       *audit.Subject
 	storage     repository.KeyValueStorage
 	baseUrl     string
@@ -37,6 +38,7 @@ func NewShortUrlService(baseURL string, storage repository.KeyValueStorage, audi
 		storage:     storage,
 		baseUrl:     baseURL,
 		deleteQueue: make(chan deleteQueueJob, defaultDeleteQueueBuf),
+		deleteDone:  make(chan struct{}),
 	}
 	if len(auditSubject) > 0 {
 		s.audit = auditSubject[0]
@@ -118,22 +120,35 @@ func (s *ShortUrlService) QueueUserURLsDeletion(userID string, shortIDs []string
 	if len(shortIDs) == 0 {
 		return
 	}
-	ids := append([]string(nil), shortIDs...)
-	go func() {
-		s.deleteQueue <- deleteQueueJob{userID: userID, shortIDs: ids}
-	}()
+	s.deleteQueue <- deleteQueueJob{
+		userID:   userID,
+		shortIDs: append([]string(nil), shortIDs...),
+	}
+}
+
+// Shutdown завершает фоновую обработку удалений и сбрасывает несохранённые данные.
+func (s *ShortUrlService) Shutdown() {
+	close(s.deleteQueue)
+	<-s.deleteDone
 }
 
 func (s *ShortUrlService) runDeleteQueueConsumer() {
 	ticker := time.NewTicker(deleteFlushTickerDur)
 	defer ticker.Stop()
+	defer close(s.deleteDone)
 
 	batch := make([]string, 0, deleteBatchSize)
 	var batchUser string
 
 	for {
 		select {
-		case job := <-s.deleteQueue:
+		case job, ok := <-s.deleteQueue:
+			if !ok {
+				if len(batch) > 0 {
+					s.flushDeleteBatch(batchUser, batch)
+				}
+				return
+			}
 			for _, id := range job.shortIDs {
 				if id == "" {
 					continue

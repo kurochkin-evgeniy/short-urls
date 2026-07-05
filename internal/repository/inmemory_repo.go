@@ -236,3 +236,10 @@ func (s *MapKeyValueStorage) saveToFile() error {
 
 	return nil
 }
+
+// Close сохраняет данные в файл, если хранилище использует постоянное хранение.
+func (s *MapKeyValueStorage) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveToFile()
+}

@@ -3,15 +3,20 @@ package app
 
 import (
 	"compress/flate"
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
+	"os/signal"
 	"short-urls/internal/config"
 	"short-urls/internal/handler"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
+	"syscall"
+	"time"
 
 	"short-urls/internal/audit"
 	"short-urls/internal/middleware"
@@ -20,6 +25,8 @@ import (
 	chi_m "github.com/go-chi/chi/v5/middleware"
 	_ "github.com/lib/pq"
 )
+
+const shutdownTimeout = 30 * time.Second
 
 // ShortUrlApp — корневой объект приложения.
 type ShortUrlApp struct {
@@ -84,25 +91,66 @@ func (a *ShortUrlApp) Start() error {
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
 	r.Get("/ping", handler.HandlePing(db))
 
-	if a.cfg.EnableHTTPS {
-		logging.Sugar.Infow("HTTPS server is starting",
-			"address", a.cfg.HostAddr,
-			"cert", a.cfg.TLSCertFile,
-			"key", a.cfg.TLSKeyFile,
-		)
-		if err := http.ListenAndServeTLS(a.cfg.HostAddr, a.cfg.TLSCertFile, a.cfg.TLSKeyFile, r); err != nil {
-			logging.Sugar.Errorw("HTTPS server stopped with error", "error", err)
-			return err
+	srv := &http.Server{
+		Addr:    a.cfg.HostAddr,
+		Handler: r,
+	}
+
+	serverErrors := make(chan error, 1)
+	go func() {
+		if a.cfg.EnableHTTPS {
+			logging.Sugar.Infow("HTTPS server is starting",
+				"address", a.cfg.HostAddr,
+				"cert", a.cfg.TLSCertFile,
+				"key", a.cfg.TLSKeyFile,
+			)
+			if err := srv.ListenAndServeTLS(a.cfg.TLSCertFile, a.cfg.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				serverErrors <- err
+			}
+			return
 		}
-	} else {
+
 		logging.Sugar.Infow("HTTP server is starting", "address", a.cfg.HostAddr)
-		if err := http.ListenAndServe(a.cfg.HostAddr, r); err != nil {
-			logging.Sugar.Errorw("HTTP server stopped with error", "error", err)
-			return err
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErrors <- err
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	select {
+	case err := <-serverErrors:
+		logging.Sugar.Errorw("Server stopped with error", "error", err)
+		return err
+	case sig := <-quit:
+		logging.Sugar.Infow("Shutdown signal received", "signal", sig.String())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logging.Sugar.Errorw("Server graceful shutdown failed", "error", err)
+		return err
+	}
+
+	logging.Sugar.Infow("HTTP server stopped, draining background workers")
+	a.shortUrlService.Shutdown()
+
+	if auditSubject != nil {
+		if err := auditSubject.Close(); err != nil {
+			logging.Sugar.Errorw("Failed to close audit", "error", err)
 		}
 	}
 
-	logging.Sugar.Infow("Server stopped")
+	if closer, ok := storage.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			logging.Sugar.Errorw("Failed to close storage", "error", err)
+		}
+	}
+
+	logging.Sugar.Infow("Graceful shutdown completed")
 	return nil
 }
 

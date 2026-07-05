@@ -67,3 +67,18 @@ func (s *Subject) Notify(action Action, userID, url string) {
 		o.Notify(event)
 	}
 }
+
+// Close освобождает ресурсы наблюдателей, поддерживающих закрытие.
+func (s *Subject) Close() error {
+	if s == nil {
+		return nil
+	}
+	for _, o := range s.observers {
+		if closer, ok := o.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
