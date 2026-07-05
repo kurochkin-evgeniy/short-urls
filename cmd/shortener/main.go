@@ -36,5 +36,9 @@ func valueOrNA(value string) string {
 }
 
 func run() error {
-	return app.NewShortUrlApp().Start()
+	app, err := app.NewShortUrlApp()
+	if err != nil {
+		return err
+	}
+	return app.Start()
 }

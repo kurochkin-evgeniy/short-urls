@@ -28,11 +28,14 @@ type ShortUrlApp struct {
 }
 
 // NewShortUrlApp загружает конфигурацию и подготавливает экземпляр приложения.
-func NewShortUrlApp() *ShortUrlApp {
-	cfg := config.NewConfig()
+func NewShortUrlApp() (*ShortUrlApp, error) {
+	cfg, err := config.NewConfig()
+	if err != nil {
+		return nil, err
+	}
 	return &ShortUrlApp{
 		cfg: cfg,
-	}
+	}, nil
 }
 
 // Start собирает зависимости, регистрирует маршруты и запускает HTTP-сервер.
