@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -144,7 +145,7 @@ func (a *ShortUrlApp) Start() error {
 		}
 	}
 
-	if closer, ok := storage.(interface{ Close() error }); ok {
+	if closer, ok := storage.(io.Closer); ok {
 		if err := closer.Close(); err != nil {
 			logging.Sugar.Errorw("Failed to close storage", "error", err)
 		}
