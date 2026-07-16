@@ -68,27 +68,13 @@ func NewConfig() (*Config, error) {
 
 	applyEnv(cfg)
 
-	if hostAddr != "" {
-		cfg.HostAddr = hostAddr
-	}
-	if baseURL != "" {
-		cfg.BaseUrl = baseURL
-	}
-	if filePath != "" {
-		cfg.FilePath = filePath
-	}
-	if databaseDSN != "" {
-		cfg.DatabaseDSN = databaseDSN
-	}
-	if tlsKeyFile != "" {
-		cfg.TLSKeyFile = tlsKeyFile
-	}
-	if auditFile != "" {
-		cfg.AuditFile = auditFile
-	}
-	if auditURL != "" {
-		cfg.AuditURL = auditURL
-	}
+	setIfNotEmpty(&cfg.HostAddr, hostAddr)
+	setIfNotEmpty(&cfg.BaseUrl, baseURL)
+	setIfNotEmpty(&cfg.FilePath, filePath)
+	setIfNotEmpty(&cfg.DatabaseDSN, databaseDSN)
+	setIfNotEmpty(&cfg.TLSKeyFile, tlsKeyFile)
+	setIfNotEmpty(&cfg.AuditFile, auditFile)
+	setIfNotEmpty(&cfg.AuditURL, auditURL)
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "s" {
 			cfg.EnableHTTPS = enableHTTPS
@@ -99,34 +85,34 @@ func NewConfig() (*Config, error) {
 }
 
 func applyEnv(cfg *Config) {
-	if val, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
-		cfg.HostAddr = val
-	}
-	if val, ok := os.LookupEnv("BASE_URL"); ok {
-		cfg.BaseUrl = val
-	}
-	if val, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
-		cfg.FilePath = val
-	}
-	if val, ok := os.LookupEnv("DATABASE_DSN"); ok {
-		cfg.DatabaseDSN = val
-	}
-	if val, ok := os.LookupEnv("COOKIE_SECRET"); ok {
-		cfg.CookieSecret = val
-	}
-	if val, ok := os.LookupEnv("AUDIT_FILE"); ok {
-		cfg.AuditFile = val
-	}
-	if val, ok := os.LookupEnv("AUDIT_URL"); ok {
-		cfg.AuditURL = val
-	}
+	setFromEnv(&cfg.HostAddr, "SERVER_ADDRESS")
+	setFromEnv(&cfg.BaseUrl, "BASE_URL")
+	setFromEnv(&cfg.FilePath, "FILE_STORAGE_PATH")
+	setFromEnv(&cfg.DatabaseDSN, "DATABASE_DSN")
+	setFromEnv(&cfg.CookieSecret, "COOKIE_SECRET")
+	setFromEnv(&cfg.AuditFile, "AUDIT_FILE")
+	setFromEnv(&cfg.AuditURL, "AUDIT_URL")
 	if _, ok := os.LookupEnv("ENABLE_HTTPS"); ok {
 		cfg.EnableHTTPS = true
 	}
-	if val, ok := os.LookupEnv("TLS_CERT_FILE"); ok {
-		cfg.TLSCertFile = val
+	setFromEnv(&cfg.TLSCertFile, "TLS_CERT_FILE")
+	setFromEnv(&cfg.TLSKeyFile, "TLS_KEY_FILE")
+}
+
+func setFromPtr[T any](dst *T, src *T) {
+	if src != nil {
+		*dst = *src
 	}
-	if val, ok := os.LookupEnv("TLS_KEY_FILE"); ok {
-		cfg.TLSKeyFile = val
+}
+
+func setIfNotEmpty(dst *string, src string) {
+	if src != "" {
+		*dst = src
+	}
+}
+
+func setFromEnv(dst *string, key string) {
+	if val, ok := os.LookupEnv(key); ok {
+		*dst = val
 	}
 }

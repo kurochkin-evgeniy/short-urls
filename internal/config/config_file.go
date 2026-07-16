@@ -35,34 +35,14 @@ func loadConfigFromFile(path string, cfg *Config) error {
 }
 
 func applyFileConfig(fileCfg *fileConfig, cfg *Config) {
-	if fileCfg.ServerAddress != nil {
-		cfg.HostAddr = *fileCfg.ServerAddress
-	}
-	if fileCfg.BaseURL != nil {
-		cfg.BaseUrl = *fileCfg.BaseURL
-	}
-	if fileCfg.FileStoragePath != nil {
-		cfg.FilePath = *fileCfg.FileStoragePath
-	}
-	if fileCfg.DatabaseDSN != nil {
-		cfg.DatabaseDSN = *fileCfg.DatabaseDSN
-	}
-	if fileCfg.CookieSecret != nil {
-		cfg.CookieSecret = *fileCfg.CookieSecret
-	}
-	if fileCfg.AuditFile != nil {
-		cfg.AuditFile = *fileCfg.AuditFile
-	}
-	if fileCfg.AuditURL != nil {
-		cfg.AuditURL = *fileCfg.AuditURL
-	}
-	if fileCfg.EnableHTTPS != nil {
-		cfg.EnableHTTPS = *fileCfg.EnableHTTPS
-	}
-	if fileCfg.TLSCertFile != nil {
-		cfg.TLSCertFile = *fileCfg.TLSCertFile
-	}
-	if fileCfg.TLSKeyFile != nil {
-		cfg.TLSKeyFile = *fileCfg.TLSKeyFile
-	}
+	setFromPtr(&cfg.HostAddr, fileCfg.ServerAddress)
+	setFromPtr(&cfg.BaseUrl, fileCfg.BaseURL)
+	setFromPtr(&cfg.FilePath, fileCfg.FileStoragePath)
+	setFromPtr(&cfg.DatabaseDSN, fileCfg.DatabaseDSN)
+	setFromPtr(&cfg.CookieSecret, fileCfg.CookieSecret)
+	setFromPtr(&cfg.AuditFile, fileCfg.AuditFile)
+	setFromPtr(&cfg.AuditURL, fileCfg.AuditURL)
+	setFromPtr(&cfg.EnableHTTPS, fileCfg.EnableHTTPS)
+	setFromPtr(&cfg.TLSCertFile, fileCfg.TLSCertFile)
+	setFromPtr(&cfg.TLSKeyFile, fileCfg.TLSKeyFile)
 }
