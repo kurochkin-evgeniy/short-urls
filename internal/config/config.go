@@ -4,7 +4,6 @@ package config
 import (
 	"flag"
 	"os"
-	"strconv"
 )
 
 // Config содержит параметры запуска сервиса сокращения URL.
@@ -33,66 +32,68 @@ func defaultConfig() *Config {
 func NewConfig() (*Config, error) {
 	cfg := defaultConfig()
 
-	var configFile string
+	var (
+		configFile  string
+		hostAddr    string
+		baseURL     string
+		filePath    string
+		databaseDSN string
+		enableHTTPS bool
+		tlsKeyFile  string
+		auditFile   string
+		auditURL    string
+	)
+
 	flag.StringVar(&configFile, "c", "", "config file path")
 	flag.StringVar(&configFile, "config", "", "config file path")
-	flag.StringVar(&cfg.HostAddr, "a", cfg.HostAddr, "HTTP server address")
-	flag.StringVar(&cfg.BaseUrl, "b", cfg.BaseUrl, "Base URL for shortened links")
-	flag.StringVar(&cfg.FilePath, "f", "", "storage path")
-	flag.StringVar(&cfg.DatabaseDSN, "d", "", "PostgreSQL DSN")
-	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
-	flag.StringVar(&cfg.TLSKeyFile, "k", "", "TLS key file path")
-	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit log file path")
-	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit remote server URL")
+	flag.StringVar(&hostAddr, "a", "", "HTTP server address")
+	flag.StringVar(&baseURL, "b", "", "Base URL for shortened links")
+	flag.StringVar(&filePath, "f", "", "storage path")
+	flag.StringVar(&databaseDSN, "d", "", "PostgreSQL DSN")
+	flag.BoolVar(&enableHTTPS, "s", false, "enable HTTPS")
+	flag.StringVar(&tlsKeyFile, "k", "", "TLS key file path")
+	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
+	flag.StringVar(&auditURL, "audit-url", "", "audit remote server URL")
 	flag.Parse()
 
-	visited := map[string]bool{}
-	flag.Visit(func(f *flag.Flag) {
-		visited[f.Name] = true
-	})
-
-	configPath := ""
-	if visited["c"] || visited["config"] {
-		configPath = configFile
-	} else if val, ok := os.LookupEnv("CONFIG"); ok {
-		configPath = val
+	configPath := configFile
+	if configPath == "" {
+		configPath = os.Getenv("CONFIG")
 	}
-
-	cfg = defaultConfig()
 	if configPath != "" {
 		if err := loadConfigFromFile(configPath, cfg); err != nil {
 			return nil, err
 		}
 	}
 
+	applyEnv(cfg)
+
+	if hostAddr != "" {
+		cfg.HostAddr = hostAddr
+	}
+	if baseURL != "" {
+		cfg.BaseUrl = baseURL
+	}
+	if filePath != "" {
+		cfg.FilePath = filePath
+	}
+	if databaseDSN != "" {
+		cfg.DatabaseDSN = databaseDSN
+	}
+	if tlsKeyFile != "" {
+		cfg.TLSKeyFile = tlsKeyFile
+	}
+	if auditFile != "" {
+		cfg.AuditFile = auditFile
+	}
+	if auditURL != "" {
+		cfg.AuditURL = auditURL
+	}
 	flag.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "c", "config":
-			return
-		case "a":
-			cfg.HostAddr = f.Value.String()
-		case "b":
-			cfg.BaseUrl = f.Value.String()
-		case "f":
-			cfg.FilePath = f.Value.String()
-		case "d":
-			cfg.DatabaseDSN = f.Value.String()
-		case "s":
-			enabled, err := strconv.ParseBool(f.Value.String())
-			if err != nil {
-				return
-			}
-			cfg.EnableHTTPS = enabled
-		case "k":
-			cfg.TLSKeyFile = f.Value.String()
-		case "audit-file":
-			cfg.AuditFile = f.Value.String()
-		case "audit-url":
-			cfg.AuditURL = f.Value.String()
+		if f.Name == "s" {
+			cfg.EnableHTTPS = enableHTTPS
 		}
 	})
-
-	applyEnv(cfg)
 
 	return cfg, nil
 }

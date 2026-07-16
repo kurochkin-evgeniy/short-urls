@@ -132,6 +132,23 @@ func TestNewConfigFileOverriddenByFlag(t *testing.T) {
 	assert.Equal(t, "http://127.0.0.1:7070", cfg.BaseUrl)
 }
 
+func TestNewConfigEnvOverriddenByFlag(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("SERVER_ADDRESS", "127.0.0.1:9090")
+	t.Setenv("BASE_URL", "http://127.0.0.1:9090")
+	t.Setenv("ENABLE_HTTPS", "true")
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = []string{"shortener", "-a", "127.0.0.1:7070", "-b", "http://127.0.0.1:7070", "-s=false"}
+
+	cfg, err := NewConfig()
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:7070", cfg.HostAddr)
+	assert.Equal(t, "http://127.0.0.1:7070", cfg.BaseUrl)
+	assert.False(t, cfg.EnableHTTPS)
+}
+
 func TestNewConfigFromEnvConfigPath(t *testing.T) {
 	resetFlags(t)
 	os.Unsetenv("SERVER_ADDRESS")
