@@ -1,7 +1,10 @@
 // Package audit реализует паттерн «Наблюдатель» для аудита запросов.
 package audit
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 // Action описывает тип аудируемого запроса.
 type Action string
@@ -66,4 +69,19 @@ func (s *Subject) Notify(action Action, userID, url string) {
 	for _, o := range s.observers {
 		o.Notify(event)
 	}
+}
+
+// Close освобождает ресурсы наблюдателей, поддерживающих закрытие.
+func (s *Subject) Close() error {
+	if s == nil {
+		return nil
+	}
+	for _, o := range s.observers {
+		if closer, ok := o.(io.Closer); ok {
+			if err := closer.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -3,15 +3,21 @@ package app
 
 import (
 	"compress/flate"
+	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
+	"os/signal"
 	"short-urls/internal/config"
 	"short-urls/internal/handler"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
+	"syscall"
+	"time"
 
 	"short-urls/internal/audit"
 	"short-urls/internal/middleware"
@@ -21,18 +27,27 @@ import (
 	_ "github.com/lib/pq"
 )
 
+const shutdownTimeout = 30 * time.Second
+
 // ShortUrlApp — корневой объект приложения.
 type ShortUrlApp struct {
 	cfg             *config.Config
 	shortUrlService *service.ShortUrlService
+	srv             *http.Server
+	storage         repository.KeyValueStorage
+	auditSubject    *audit.Subject
+	db              *sql.DB
 }
 
 // NewShortUrlApp загружает конфигурацию и подготавливает экземпляр приложения.
-func NewShortUrlApp() *ShortUrlApp {
-	cfg := config.NewConfig()
+func NewShortUrlApp() (*ShortUrlApp, error) {
+	cfg, err := config.NewConfig()
+	if err != nil {
+		return nil, err
+	}
 	return &ShortUrlApp{
 		cfg: cfg,
-	}
+	}, nil
 }
 
 // Start собирает зависимости, регистрирует маршруты и запускает HTTP-сервер.
@@ -54,14 +69,15 @@ func (a *ShortUrlApp) Start() error {
 		logging.Sugar.Errorw("Failed to build storage backend", "error", err)
 		return err
 	}
+	a.storage = storage
+	a.db = db
 	if db != nil {
-		logging.Sugar.Debugw("Database connection opened, close deferred")
-		defer db.Close()
+		logging.Sugar.Debugw("Database connection opened")
 	}
 
 	logging.Sugar.Debugw("Initializing short URL service")
-	auditSubject := audit.NewSubjectFromConfig(a.cfg.AuditFile, a.cfg.AuditURL)
-	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, storage, auditSubject)
+	a.auditSubject = audit.NewSubjectFromConfig(a.cfg.AuditFile, a.cfg.AuditURL)
+	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, a.storage, a.auditSubject)
 
 	logging.Sugar.Debugw("Configuring HTTP router")
 	r := chi.NewRouter()
@@ -79,15 +95,86 @@ func (a *ShortUrlApp) Start() error {
 	r.Get("/api/user/urls", handler.HandleGetUserURLsRequest(a.shortUrlService))
 	r.Delete("/api/user/urls", handler.HandleDeleteUserURLsRequest(a.shortUrlService))
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
-	r.Get("/ping", handler.HandlePing(db))
+	r.Get("/ping", handler.HandlePing(a.db))
 
-	logging.Sugar.Infow("HTTP server is starting", "address", a.cfg.HostAddr)
-	if err := http.ListenAndServe(a.cfg.HostAddr, r); err != nil {
-		logging.Sugar.Errorw("HTTP server stopped with error", "error", err)
-		return err
+	a.srv = &http.Server{
+		Addr:    a.cfg.HostAddr,
+		Handler: r,
 	}
 
-	logging.Sugar.Infow("HTTP server stopped")
+	serverErrors := make(chan error, 1)
+	go func() {
+		if a.cfg.EnableHTTPS {
+			logging.Sugar.Infow("HTTPS server is starting",
+				"address", a.cfg.HostAddr,
+				"cert", a.cfg.TLSCertFile,
+				"key", a.cfg.TLSKeyFile,
+			)
+			if err := a.srv.ListenAndServeTLS(a.cfg.TLSCertFile, a.cfg.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				serverErrors <- err
+			}
+			return
+		}
+
+		logging.Sugar.Infow("HTTP server is starting", "address", a.cfg.HostAddr)
+		if err := a.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErrors <- err
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	var runErr error
+	select {
+	case runErr = <-serverErrors:
+		logging.Sugar.Errorw("Server stopped with error", "error", runErr)
+	case sig := <-quit:
+		logging.Sugar.Infow("Shutdown signal received", "signal", sig.String())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := a.Shutdown(ctx); err != nil && runErr == nil {
+		return err
+	}
+	return runErr
+}
+
+// Shutdown останавливает HTTP-сервер и освобождает ресурсы приложения.
+func (a *ShortUrlApp) Shutdown(ctx context.Context) error {
+	if a.srv != nil {
+		if err := a.srv.Shutdown(ctx); err != nil {
+			logging.Sugar.Errorw("Server graceful shutdown failed", "error", err)
+			return err
+		}
+	}
+
+	logging.Sugar.Infow("HTTP server stopped, draining background workers")
+	if a.shortUrlService != nil {
+		a.shortUrlService.Shutdown()
+	}
+
+	if a.auditSubject != nil {
+		if err := a.auditSubject.Close(); err != nil {
+			logging.Sugar.Errorw("Failed to close audit", "error", err)
+		}
+	}
+
+	if closer, ok := a.storage.(io.Closer); ok {
+		if err := closer.Close(); err != nil {
+			logging.Sugar.Errorw("Failed to close storage", "error", err)
+		}
+	}
+
+	if a.db != nil {
+		if err := a.db.Close(); err != nil {
+			logging.Sugar.Errorw("Failed to close database", "error", err)
+		}
+	}
+
+	logging.Sugar.Infow("Graceful shutdown completed")
 	return nil
 }
 

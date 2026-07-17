@@ -84,6 +84,21 @@ func TestQueueUserURLsDeletion(t *testing.T) {
 	assert.True(t, deleted)
 }
 
+func TestShutdownFlushesPendingDeletions(t *testing.T) {
+	storage := repository.NewMapKeyValueStorage()
+	s := NewShortUrlService("http://localhost:8080", storage)
+	created, err := s.CreateShortUrl("https://example.com/shutdown", "user-1")
+	require.NoError(t, err)
+
+	shortID := created.ShortURL[len("http://localhost:8080/"):]
+	s.QueueUserURLsDeletion("user-1", []string{shortID})
+	s.Shutdown()
+
+	_, deleted, found := s.LookupShortURL(shortID)
+	require.True(t, found)
+	assert.True(t, deleted)
+}
+
 func TestBuildShortURL(t *testing.T) {
 	s := NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
 	assert.Equal(t, "http://localhost:8080/abc123", s.buildShortURL("abc123"))

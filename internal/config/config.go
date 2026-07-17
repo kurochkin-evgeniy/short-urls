@@ -1,4 +1,4 @@
-// Package config загружает настройки приложения из флагов командной строки и переменных окружения.
+// Package config загружает настройки приложения из файла, флагов командной строки и переменных окружения.
 package config
 
 import (
@@ -15,44 +15,104 @@ type Config struct {
 	CookieSecret string
 	AuditFile    string
 	AuditURL     string
+	EnableHTTPS  bool
+	TLSCertFile  string
+	TLSKeyFile   string
 }
 
-// NewConfig разбирает флаги и переменные окружения и возвращает Config.
-func NewConfig() *Config {
-	cfg := &Config{}
-	flag.StringVar(&cfg.HostAddr, "a", "localhost:8080", "HTTP server address")
-	flag.StringVar(&cfg.BaseUrl, "b", "http://localhost:8080", "Base URL for shortened links")
-	flag.StringVar(&cfg.FilePath, "f", "", "storage path")
-	flag.StringVar(&cfg.DatabaseDSN, "d", "", "PostgreSQL DSN")
-	flag.StringVar(&cfg.CookieSecret, "s", "", "Cookie signature secret")
-	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit log file path")
-	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit remote server URL")
+func defaultConfig() *Config {
+	return &Config{
+		HostAddr: "localhost:8080",
+		BaseUrl:  "http://localhost:8080",
+	}
+}
+
+// NewConfig разбирает файл конфигурации, флаги и переменные окружения и возвращает Config.
+// Приоритет: значения по умолчанию < файл < переменные окружения < флаги.
+func NewConfig() (*Config, error) {
+	cfg := defaultConfig()
+
+	var (
+		configFile  string
+		hostAddr    string
+		baseURL     string
+		filePath    string
+		databaseDSN string
+		enableHTTPS bool
+		tlsKeyFile  string
+		auditFile   string
+		auditURL    string
+	)
+
+	flag.StringVar(&configFile, "c", "", "config file path")
+	flag.StringVar(&configFile, "config", "", "config file path")
+	flag.StringVar(&hostAddr, "a", "", "HTTP server address")
+	flag.StringVar(&baseURL, "b", "", "Base URL for shortened links")
+	flag.StringVar(&filePath, "f", "", "storage path")
+	flag.StringVar(&databaseDSN, "d", "", "PostgreSQL DSN")
+	flag.BoolVar(&enableHTTPS, "s", false, "enable HTTPS")
+	flag.StringVar(&tlsKeyFile, "k", "", "TLS key file path")
+	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
+	flag.StringVar(&auditURL, "audit-url", "", "audit remote server URL")
 	flag.Parse()
 
-	if val, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
-		cfg.HostAddr = val
+	configPath := configFile
+	if configPath == "" {
+		configPath = os.Getenv("CONFIG")
+	}
+	if configPath != "" {
+		if err := loadConfigFromFile(configPath, cfg); err != nil {
+			return nil, err
+		}
 	}
 
-	if val, ok := os.LookupEnv("BASE_URL"); ok {
-		cfg.BaseUrl = val
-	}
+	applyEnv(cfg)
 
-	if val, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
-		cfg.FilePath = val
-	}
+	setIfNotEmpty(&cfg.HostAddr, hostAddr)
+	setIfNotEmpty(&cfg.BaseUrl, baseURL)
+	setIfNotEmpty(&cfg.FilePath, filePath)
+	setIfNotEmpty(&cfg.DatabaseDSN, databaseDSN)
+	setIfNotEmpty(&cfg.TLSKeyFile, tlsKeyFile)
+	setIfNotEmpty(&cfg.AuditFile, auditFile)
+	setIfNotEmpty(&cfg.AuditURL, auditURL)
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "s" {
+			cfg.EnableHTTPS = enableHTTPS
+		}
+	})
 
-	if val, ok := os.LookupEnv("DATABASE_DSN"); ok {
-		cfg.DatabaseDSN = val
-	}
-	if val, ok := os.LookupEnv("COOKIE_SECRET"); ok {
-		cfg.CookieSecret = val
-	}
-	if val, ok := os.LookupEnv("AUDIT_FILE"); ok {
-		cfg.AuditFile = val
-	}
-	if val, ok := os.LookupEnv("AUDIT_URL"); ok {
-		cfg.AuditURL = val
-	}
+	return cfg, nil
+}
 
-	return cfg
+func applyEnv(cfg *Config) {
+	setFromEnv(&cfg.HostAddr, "SERVER_ADDRESS")
+	setFromEnv(&cfg.BaseUrl, "BASE_URL")
+	setFromEnv(&cfg.FilePath, "FILE_STORAGE_PATH")
+	setFromEnv(&cfg.DatabaseDSN, "DATABASE_DSN")
+	setFromEnv(&cfg.CookieSecret, "COOKIE_SECRET")
+	setFromEnv(&cfg.AuditFile, "AUDIT_FILE")
+	setFromEnv(&cfg.AuditURL, "AUDIT_URL")
+	if _, ok := os.LookupEnv("ENABLE_HTTPS"); ok {
+		cfg.EnableHTTPS = true
+	}
+	setFromEnv(&cfg.TLSCertFile, "TLS_CERT_FILE")
+	setFromEnv(&cfg.TLSKeyFile, "TLS_KEY_FILE")
+}
+
+func setFromPtr[T any](dst *T, src *T) {
+	if src != nil {
+		*dst = *src
+	}
+}
+
+func setIfNotEmpty(dst *string, src string) {
+	if src != "" {
+		*dst = src
+	}
+}
+
+func setFromEnv(dst *string, key string) {
+	if val, ok := os.LookupEnv(key); ok {
+		*dst = val
+	}
 }
