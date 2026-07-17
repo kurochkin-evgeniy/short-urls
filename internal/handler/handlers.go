@@ -41,6 +41,12 @@ type UserURLResponse struct {
 	OriginalURL string `json:"original_url"`
 }
 
+// StatsResponse — тело JSON-ответа для GET /api/internal/stats.
+type StatsResponse struct {
+	URLs  int `json:"urls"`
+	Users int `json:"users"`
+}
+
 func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
 	userID := middleware.UserIDFromContext(request.Context())
 
@@ -290,5 +296,34 @@ func HandlePing(db *sql.DB) http.HandlerFunc {
 
 		logging.Sugar.Debugw("PostgreSQL ping succeeded")
 		responce.WriteHeader(http.StatusOK)
+	}
+}
+
+func handleGetStats(responce http.ResponseWriter, request *http.Request, s *service.ShortUrlService) {
+	stats, err := s.GetStats()
+	if err != nil {
+		logging.Sugar.Errorw("Failed to read stats", "error", err)
+		responce.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	body, err := json.Marshal(StatsResponse{
+		URLs:  stats.URLs,
+		Users: stats.Users,
+	})
+	if err != nil {
+		responce.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	responce.Header().Set("content-type", "application/json")
+	responce.WriteHeader(http.StatusOK)
+	responce.Write(body)
+}
+
+// HandleGetStatsRequest обрабатывает GET /api/internal/stats.
+func HandleGetStatsRequest(s *service.ShortUrlService) http.HandlerFunc {
+	return func(responce http.ResponseWriter, request *http.Request) {
+		handleGetStats(responce, request, s)
 	}
 }

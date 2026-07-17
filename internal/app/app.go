@@ -94,6 +94,10 @@ func (a *ShortUrlApp) Start() error {
 	r.Post("/api/shorten/batch", handler.HandleCreateBatchShortUrRequest(a.shortUrlService))
 	r.Get("/api/user/urls", handler.HandleGetUserURLsRequest(a.shortUrlService))
 	r.Delete("/api/user/urls", handler.HandleDeleteUserURLsRequest(a.shortUrlService))
+	r.With(middleware.TrustedSubnetMiddleware(a.cfg.TrustedSubnet)).Get(
+		"/api/internal/stats",
+		handler.HandleGetStatsRequest(a.shortUrlService),
+	)
 	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
 	r.Get("/ping", handler.HandlePing(a.db))
 

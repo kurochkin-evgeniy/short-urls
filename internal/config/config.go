@@ -8,16 +8,17 @@ import (
 
 // Config содержит параметры запуска сервиса сокращения URL.
 type Config struct {
-	HostAddr     string
-	BaseUrl      string
-	FilePath     string
-	DatabaseDSN  string
-	CookieSecret string
-	AuditFile    string
-	AuditURL     string
-	EnableHTTPS  bool
-	TLSCertFile  string
-	TLSKeyFile   string
+	HostAddr      string
+	BaseUrl       string
+	FilePath      string
+	DatabaseDSN   string
+	CookieSecret  string
+	AuditFile     string
+	AuditURL      string
+	EnableHTTPS   bool
+	TLSCertFile   string
+	TLSKeyFile    string
+	TrustedSubnet string
 }
 
 func defaultConfig() *Config {
@@ -33,15 +34,16 @@ func NewConfig() (*Config, error) {
 	cfg := defaultConfig()
 
 	var (
-		configFile  string
-		hostAddr    string
-		baseURL     string
-		filePath    string
-		databaseDSN string
-		enableHTTPS bool
-		tlsKeyFile  string
-		auditFile   string
-		auditURL    string
+		configFile    string
+		hostAddr      string
+		baseURL       string
+		filePath      string
+		databaseDSN   string
+		enableHTTPS   bool
+		tlsKeyFile    string
+		auditFile     string
+		auditURL      string
+		trustedSubnet string
 	)
 
 	flag.StringVar(&configFile, "c", "", "config file path")
@@ -54,6 +56,7 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&tlsKeyFile, "k", "", "TLS key file path")
 	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
 	flag.StringVar(&auditURL, "audit-url", "", "audit remote server URL")
+	flag.StringVar(&trustedSubnet, "t", "", "trusted subnet in CIDR notation")
 	flag.Parse()
 
 	configPath := configFile
@@ -75,6 +78,7 @@ func NewConfig() (*Config, error) {
 	setIfNotEmpty(&cfg.TLSKeyFile, tlsKeyFile)
 	setIfNotEmpty(&cfg.AuditFile, auditFile)
 	setIfNotEmpty(&cfg.AuditURL, auditURL)
+	setIfNotEmpty(&cfg.TrustedSubnet, trustedSubnet)
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "s" {
 			cfg.EnableHTTPS = enableHTTPS
@@ -97,6 +101,7 @@ func applyEnv(cfg *Config) {
 	}
 	setFromEnv(&cfg.TLSCertFile, "TLS_CERT_FILE")
 	setFromEnv(&cfg.TLSKeyFile, "TLS_KEY_FILE")
+	setFromEnv(&cfg.TrustedSubnet, "TRUSTED_SUBNET")
 }
 
 func setFromPtr[T any](dst *T, src *T) {

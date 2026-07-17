@@ -69,3 +69,44 @@ func TestDecompressRequestMiddleware(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func TestTrustedSubnetMiddleware(t *testing.T) {
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	t.Run("empty subnet forbids all", func(t *testing.T) {
+		handler := TrustedSubnetMiddleware("")(okHandler)
+		req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+		req.Header.Set("X-Real-IP", "192.168.1.10")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("ip in subnet allowed", func(t *testing.T) {
+		handler := TrustedSubnetMiddleware("192.168.1.0/24")(okHandler)
+		req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+		req.Header.Set("X-Real-IP", "192.168.1.10")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("ip outside subnet forbidden", func(t *testing.T) {
+		handler := TrustedSubnetMiddleware("192.168.1.0/24")(okHandler)
+		req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+		req.Header.Set("X-Real-IP", "10.0.0.1")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("missing header forbidden", func(t *testing.T) {
+		handler := TrustedSubnetMiddleware("192.168.1.0/24")(okHandler)
+		req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+}

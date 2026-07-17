@@ -399,3 +399,25 @@ func Test_handleDeleteUserURLs401WhenCookieHasNoUserID(t *testing.T) {
 	deleteHandler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Result().StatusCode)
 }
+
+func Test_handleGetStats(t *testing.T) {
+	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	_, err := s.CreateShortUrl("https://example.com/1", "user-1")
+	require.NoError(t, err)
+	_, err = s.CreateShortUrl("https://example.com/2", "user-2")
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+	rec := httptest.NewRecorder()
+	http.HandlerFunc(HandleGetStatsRequest(s))(rec, req)
+
+	result := rec.Result()
+	defer result.Body.Close()
+	require.Equal(t, http.StatusOK, result.StatusCode)
+	assert.Equal(t, "application/json", result.Header.Get("Content-Type"))
+
+	var resp StatsResponse
+	require.NoError(t, json.NewDecoder(result.Body).Decode(&resp))
+	assert.Equal(t, 2, resp.URLs)
+	assert.Equal(t, 2, resp.Users)
+}

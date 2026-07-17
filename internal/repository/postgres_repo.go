@@ -163,6 +163,20 @@ WHERE user_id = $1
 	return result, nil
 }
 
+func (s *PostgresKeyValueStorage) GetStats() (Stats, error) {
+	const query = `
+SELECT
+    COUNT(*)::int AS urls,
+    COUNT(DISTINCT user_id)::int AS users
+FROM short_urls`
+
+	var stats Stats
+	if err := s.db.QueryRow(query).Scan(&stats.URLs, &stats.Users); err != nil {
+		return Stats{}, err
+	}
+	return stats, nil
+}
+
 // RunPostgresMigrations применяет встроенные SQL-миграции к базе данных.
 func RunPostgresMigrations(db *sql.DB) error {
 	logging.Sugar.Debugw("Preparing embedded migration source")

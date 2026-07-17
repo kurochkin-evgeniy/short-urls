@@ -17,6 +17,7 @@ type fileConfig struct {
 	EnableHTTPS     *bool   `json:"enable_https"`
 	TLSCertFile     *string `json:"tls_cert_file"`
 	TLSKeyFile      *string `json:"tls_key_file"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
 }
 
 func loadConfigFromFile(path string, cfg *Config) error {
@@ -45,4 +46,5 @@ func applyFileConfig(fileCfg *fileConfig, cfg *Config) {
 	setFromPtr(&cfg.EnableHTTPS, fileCfg.EnableHTTPS)
 	setFromPtr(&cfg.TLSCertFile, fileCfg.TLSCertFile)
 	setFromPtr(&cfg.TLSKeyFile, fileCfg.TLSKeyFile)
+	setFromPtr(&cfg.TrustedSubnet, fileCfg.TrustedSubnet)
 }

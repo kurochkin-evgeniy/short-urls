@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"short-urls/internal/logging"
 	"strings"
@@ -145,6 +146,35 @@ func UserCookieHasNoID(ctx context.Context) bool {
 		return false
 	}
 	return hasNoID
+}
+
+// TrustedSubnetMiddleware разрешает запрос только если X-Real-IP входит в доверенную подсеть CIDR.
+// При пустом trustedSubnet доступ запрещён для любого запроса.
+func TrustedSubnetMiddleware(trustedSubnet string) func(http.Handler) http.Handler {
+	var trustedNet *net.IPNet
+	if trustedSubnet != "" {
+		_, parsed, err := net.ParseCIDR(trustedSubnet)
+		if err == nil {
+			trustedNet = parsed
+		}
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if trustedNet == nil {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			ip := net.ParseIP(r.Header.Get("X-Real-IP"))
+			if ip == nil || !trustedNet.Contains(ip) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func generateUserID() string {
