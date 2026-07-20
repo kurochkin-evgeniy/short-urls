@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"short-urls/internal/facade"
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
 	"strings"
@@ -12,8 +13,8 @@ import (
 
 func BenchmarkHandleCreateShortUrl(b *testing.B) {
 	storage := repository.NewMapKeyValueStorage()
-	s := service.NewShortUrlService("http://localhost:8080", storage)
-	h := http.HandlerFunc(HandleCreateShortUrRequest(s))
+	f := facade.New(service.NewShortUrlService("http://localhost:8080", storage))
+	h := http.HandlerFunc(HandleCreateShortUrRequest(f))
 
 	b.ResetTimer()
 	for i := 0; b.Loop(); i++ {
@@ -31,12 +32,13 @@ func BenchmarkHandleCreateShortUrl(b *testing.B) {
 func BenchmarkHandleRedirectRequest(b *testing.B) {
 	storage := repository.NewMapKeyValueStorage()
 	s := service.NewShortUrlService("http://localhost:8080", storage)
+	f := facade.New(s)
 	result, err := s.CreateShortUrl("https://example.com/redirect", "user")
 	if err != nil {
 		b.Fatal(err)
 	}
 	shortID := strings.TrimPrefix(result.ShortURL, "http://localhost:8080/")
-	h := http.HandlerFunc(HandleRedirectRequest(s))
+	h := http.HandlerFunc(HandleRedirectRequest(f))
 
 	b.ResetTimer()
 	for i := 0; b.Loop(); i++ {

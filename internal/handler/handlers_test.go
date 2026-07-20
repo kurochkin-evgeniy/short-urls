@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"short-urls/internal/facade"
 	"short-urls/internal/middleware"
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
@@ -59,12 +60,12 @@ func Test_handleCreateShortUrl(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			s := service.NewShortUrlService("", repository.NewMapKeyValueStorage())
+			f := facade.New(service.NewShortUrlService("", repository.NewMapKeyValueStorage()))
 
 			request := httptest.NewRequest(http.MethodPost, tt.request, strings.NewReader(tt.body))
 			request.Header.Add("Content-Type", "text/plain")
 			w := httptest.NewRecorder()
-			h := http.HandlerFunc(HandleCreateShortUrRequest(s))
+			h := http.HandlerFunc(HandleCreateShortUrRequest(f))
 			h(w, request)
 
 			result := w.Result()
@@ -84,12 +85,13 @@ func Test_handleCreateShortUrl(t *testing.T) {
 
 func Test_handleCreateShortUrlConflictTextPlain(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	body := "https://example.com/conflict"
 
 	request1 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 	request1.Header.Add("Content-Type", "text/plain")
 	w1 := httptest.NewRecorder()
-	http.HandlerFunc(HandleCreateShortUrRequest(s))(w1, request1)
+	http.HandlerFunc(HandleCreateShortUrRequest(f))(w1, request1)
 	result1 := w1.Result()
 	defer result1.Body.Close()
 	require.Equal(t, http.StatusCreated, result1.StatusCode)
@@ -99,7 +101,7 @@ func Test_handleCreateShortUrlConflictTextPlain(t *testing.T) {
 	request2 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 	request2.Header.Add("Content-Type", "text/plain")
 	w2 := httptest.NewRecorder()
-	http.HandlerFunc(HandleCreateShortUrRequest(s))(w2, request2)
+	http.HandlerFunc(HandleCreateShortUrRequest(f))(w2, request2)
 	result2 := w2.Result()
 	defer result2.Body.Close()
 
@@ -112,12 +114,13 @@ func Test_handleCreateShortUrlConflictTextPlain(t *testing.T) {
 
 func Test_handleCreateShortUrlConflictJSON(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	body := `{"url":"https://example.com/conflict-json"}`
 
 	request1 := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
 	request1.Header.Add("Content-Type", "application/json")
 	w1 := httptest.NewRecorder()
-	http.HandlerFunc(HandleCreateShortUrRequest(s))(w1, request1)
+	http.HandlerFunc(HandleCreateShortUrRequest(f))(w1, request1)
 	result1 := w1.Result()
 	defer result1.Body.Close()
 	require.Equal(t, http.StatusCreated, result1.StatusCode)
@@ -127,7 +130,7 @@ func Test_handleCreateShortUrlConflictJSON(t *testing.T) {
 	request2 := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
 	request2.Header.Add("Content-Type", "application/json")
 	w2 := httptest.NewRecorder()
-	http.HandlerFunc(HandleCreateShortUrRequest(s))(w2, request2)
+	http.HandlerFunc(HandleCreateShortUrRequest(f))(w2, request2)
 	result2 := w2.Result()
 	defer result2.Body.Close()
 
@@ -141,10 +144,11 @@ func Test_handleCreateShortUrlConflictJSON(t *testing.T) {
 func Test_handleRedirectUrl400(t *testing.T) {
 
 	s := service.NewShortUrlService("", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
-	h := http.HandlerFunc(HandleRedirectRequest(s))
+	h := http.HandlerFunc(HandleRedirectRequest(f))
 	h(w, request)
 
 	result := w.Result()
@@ -154,6 +158,7 @@ func Test_handleRedirectUrl400(t *testing.T) {
 
 func Test_handleCreateBatchShortUrl(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 
 	body := `[
 {"correlation_id":"id1","original_url":"https://example.com/1"},
@@ -162,7 +167,7 @@ func Test_handleCreateBatchShortUrl(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
 	request.Header.Add("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	h := http.HandlerFunc(HandleCreateBatchShortUrRequest(s))
+	h := http.HandlerFunc(HandleCreateBatchShortUrRequest(f))
 	h(w, request)
 
 	result := w.Result()
@@ -187,11 +192,12 @@ func Test_handleCreateBatchShortUrl(t *testing.T) {
 
 func Test_handleCreateBatchShortUrlEmptyBatch(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 
 	request := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("[]"))
 	request.Header.Add("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	h := http.HandlerFunc(HandleCreateBatchShortUrRequest(s))
+	h := http.HandlerFunc(HandleCreateBatchShortUrRequest(f))
 	h(w, request)
 
 	result := w.Result()
@@ -204,12 +210,13 @@ func Test_handleRedirectUrl307(t *testing.T) {
 
 	const redirectUrl = "my url"
 	s := service.NewShortUrlService("", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	createResult, err := s.CreateShortUrl(redirectUrl, "test-user")
 	require.NoError(t, err)
 
 	request := httptest.NewRequest(http.MethodGet, createResult.ShortURL, nil)
 	w := httptest.NewRecorder()
-	h := http.HandlerFunc(HandleRedirectRequest(s))
+	h := http.HandlerFunc(HandleRedirectRequest(f))
 	h(w, request)
 
 	result := w.Result()
@@ -222,10 +229,11 @@ func Test_handleUnknownRedirectUrl400(t *testing.T) {
 
 	const redirectUrl = "my url"
 	s := service.NewShortUrlService("", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 
 	request := httptest.NewRequest(http.MethodGet, "/1234", nil)
 	w := httptest.NewRecorder()
-	h := http.HandlerFunc(HandleRedirectRequest(s))
+	h := http.HandlerFunc(HandleRedirectRequest(f))
 	h(w, request)
 
 	result := w.Result()
@@ -236,6 +244,7 @@ func Test_handleUnknownRedirectUrl400(t *testing.T) {
 func Test_handleRedirectUrl410(t *testing.T) {
 	st := repository.NewMapKeyValueStorage()
 	s := service.NewShortUrlService("", st)
+	f := facade.New(s)
 
 	createResult, err := s.CreateShortUrl("https://example.com/gone", "")
 	require.NoError(t, err)
@@ -247,7 +256,7 @@ func Test_handleRedirectUrl410(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/"+shortID, nil)
 	w := httptest.NewRecorder()
-	http.HandlerFunc(HandleRedirectRequest(s))(w, request)
+	http.HandlerFunc(HandleRedirectRequest(f))(w, request)
 
 	result := w.Result()
 	defer result.Body.Close()
@@ -256,9 +265,10 @@ func Test_handleRedirectUrl410(t *testing.T) {
 
 func Test_handleGetUserURLs200(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	auth := middleware.AuthMiddleware("test-secret")
-	createHandler := auth(http.HandlerFunc(HandleCreateShortUrRequest(s)))
-	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(s)))
+	createHandler := auth(http.HandlerFunc(HandleCreateShortUrRequest(f)))
+	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(f)))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://example.com/u1"))
 	createReq.Header.Set("Content-Type", "text/plain")
@@ -292,8 +302,9 @@ func Test_handleGetUserURLs200(t *testing.T) {
 
 func Test_handleGetUserURLs204(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	auth := middleware.AuthMiddleware("test-secret")
-	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(s)))
+	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(f)))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
 	rec := httptest.NewRecorder()
@@ -306,8 +317,9 @@ func Test_handleGetUserURLs204(t *testing.T) {
 
 func Test_handleGetUserURLs401WhenCookieHasNoUserID(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	auth := middleware.AuthMiddleware("test-secret")
-	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(s)))
+	getHandler := auth(http.HandlerFunc(HandleGetUserURLsRequest(f)))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
 	req.AddCookie(&http.Cookie{
@@ -333,10 +345,11 @@ func makeSignedTokenWithEmptyUserID(secret string) string {
 
 func Test_handleDeleteUserURLs202(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	auth := middleware.AuthMiddleware("test-secret")
-	createHandler := auth(http.HandlerFunc(HandleCreateShortUrRequest(s)))
-	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(s)))
-	redirectHandler := http.HandlerFunc(HandleRedirectRequest(s))
+	createHandler := auth(http.HandlerFunc(HandleCreateShortUrRequest(f)))
+	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(f)))
+	redirectHandler := http.HandlerFunc(HandleRedirectRequest(f))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://example.com/del"))
 	createReq.Header.Set("Content-Type", "text/plain")
@@ -373,8 +386,9 @@ func Test_handleDeleteUserURLs202(t *testing.T) {
 
 func Test_handleDeleteUserURLs400EmptyBody(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	auth := middleware.AuthMiddleware("test-secret")
-	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(s)))
+	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(f)))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/user/urls", strings.NewReader("[]"))
 	req.Header.Set("Content-Type", "application/json")
@@ -385,8 +399,9 @@ func Test_handleDeleteUserURLs400EmptyBody(t *testing.T) {
 
 func Test_handleDeleteUserURLs401WhenCookieHasNoUserID(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	auth := middleware.AuthMiddleware("test-secret")
-	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(s)))
+	deleteHandler := auth(http.HandlerFunc(HandleDeleteUserURLsRequest(f)))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/user/urls", strings.NewReader(`["abc"]`))
 	req.Header.Set("Content-Type", "application/json")
@@ -402,6 +417,7 @@ func Test_handleDeleteUserURLs401WhenCookieHasNoUserID(t *testing.T) {
 
 func Test_handleGetStats(t *testing.T) {
 	s := service.NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	f := facade.New(s)
 	_, err := s.CreateShortUrl("https://example.com/1", "user-1")
 	require.NoError(t, err)
 	_, err = s.CreateShortUrl("https://example.com/2", "user-2")
@@ -409,7 +425,7 @@ func Test_handleGetStats(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
 	rec := httptest.NewRecorder()
-	http.HandlerFunc(HandleGetStatsRequest(s))(rec, req)
+	http.HandlerFunc(HandleGetStatsRequest(f))(rec, req)
 
 	result := rec.Result()
 	defer result.Body.Close()

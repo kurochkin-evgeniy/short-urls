@@ -4,29 +4,16 @@ package middleware
 import (
 	"compress/gzip"
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"net"
 	"net/http"
+	"short-urls/internal/auth"
 	"short-urls/internal/logging"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/middleware"
 )
 
-type contextKey string
-
-const (
-	userIDContextKey      contextKey = "userID"
-	userCookieSeenContext contextKey = "userCookieSeen"
-	userCookieNoIDContext contextKey = "userCookieNoID"
-	userCookieName                   = "user_token"
-	defaultCookieSecret              = "short-urls-secret"
-)
+const userCookieName = "user_token"
 
 // LoggingMiddleware логирует метод, путь, код ответа и длительность запроса.
 func LoggingMiddleware(next http.Handler) http.Handler {
@@ -47,7 +34,6 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 func DecompressRequestMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Encoding") == "gzip" {
-			// Оборачиваем тело запроса gzip-ридером.
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
 				http.Error(w, "Bad request", http.StatusBadRequest)
@@ -55,24 +41,16 @@ func DecompressRequestMiddleware(next http.Handler) http.Handler {
 			}
 			defer gz.Close()
 
-			// Заменяем исходное тело запроса распакованным.
 			r.Body = gz
-			// Удаляем заголовки Content-Encoding и Content-Length.
 			r.Header.Del("Content-Encoding")
 			r.Header.Del("Content-Length")
 		}
-		// Передаём управление следующему обработчику.
 		next.ServeHTTP(w, r)
 	})
 }
 
 // AuthMiddleware назначает идентификатор пользователя через подписанную cookie и сохраняет его в контексте запроса.
 func AuthMiddleware(secret string) func(http.Handler) http.Handler {
-	secretToUse := secret
-	if secretToUse == "" {
-		secretToUse = defaultCookieSecret
-	}
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(userCookieName)
@@ -81,7 +59,7 @@ func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 			userID := ""
 			cookieWithNoID := false
 			if cookieWasPresent {
-				verifiedID, ok, hasID := verifySignedUserToken(cookie.Value, secretToUse)
+				verifiedID, ok, hasID := auth.VerifySignedUserToken(cookie.Value, secret)
 				if ok {
 					userID = verifiedID
 					if !hasID {
@@ -91,8 +69,8 @@ func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 			}
 
 			if userID == "" && !cookieWithNoID {
-				userID = generateUserID()
-				token := signUserToken(userID, secretToUse)
+				userID = auth.GenerateUserID()
+				token := auth.SignUserToken(userID, secret)
 				http.SetCookie(w, &http.Cookie{
 					Name:     userCookieName,
 					Value:    token,
@@ -101,9 +79,7 @@ func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 				})
 			}
 
-			ctx := context.WithValue(r.Context(), userIDContextKey, userID)
-			ctx = context.WithValue(ctx, userCookieSeenContext, cookieWasPresent)
-			ctx = context.WithValue(ctx, userCookieNoIDContext, cookieWithNoID)
+			ctx := auth.ContextWithUserID(r.Context(), userID, cookieWasPresent, cookieWithNoID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -111,41 +87,17 @@ func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 
 // UserIDFromContext возвращает идентификатор пользователя, установленный AuthMiddleware.
 func UserIDFromContext(ctx context.Context) string {
-	value := ctx.Value(userIDContextKey)
-	if value == nil {
-		return ""
-	}
-	userID, ok := value.(string)
-	if !ok {
-		return ""
-	}
-	return userID
+	return auth.UserIDFromContext(ctx)
 }
 
 // UserCookieWasPresent сообщает, была ли в запросе cookie user_token.
 func UserCookieWasPresent(ctx context.Context) bool {
-	value := ctx.Value(userCookieSeenContext)
-	if value == nil {
-		return false
-	}
-	wasPresent, ok := value.(bool)
-	if !ok {
-		return false
-	}
-	return wasPresent
+	return auth.AuthWasPresent(ctx)
 }
 
 // UserCookieHasNoID сообщает, что cookie была передана, но не содержала идентификатор пользователя.
 func UserCookieHasNoID(ctx context.Context) bool {
-	value := ctx.Value(userCookieNoIDContext)
-	if value == nil {
-		return false
-	}
-	hasNoID, ok := value.(bool)
-	if !ok {
-		return false
-	}
-	return hasNoID
+	return auth.AuthHasNoID(ctx)
 }
 
 // TrustedSubnetMiddleware разрешает запрос только если X-Real-IP входит в доверенную подсеть CIDR.
@@ -175,49 +127,4 @@ func TrustedSubnetMiddleware(trustedSubnet string) func(http.Handler) http.Handl
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func generateUserID() string {
-	buffer := make([]byte, 16)
-	if _, err := rand.Read(buffer); err != nil {
-		return hex.EncodeToString([]byte(time.Now().String()))
-	}
-	return hex.EncodeToString(buffer)
-}
-
-func signUserToken(userID string, secret string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(userID))
-	signature := mac.Sum(nil)
-	raw := userID + "." + hex.EncodeToString(signature)
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
-}
-
-func verifySignedUserToken(token string, secret string) (string, bool, bool) {
-	decoded, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return "", false, false
-	}
-
-	parts := strings.SplitN(string(decoded), ".", 2)
-	if len(parts) != 2 {
-		return "", false, false
-	}
-
-	userID := parts[0]
-	signatureHex := parts[1]
-
-	signature, err := hex.DecodeString(signatureHex)
-	if err != nil {
-		return "", false, false
-	}
-
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(userID))
-	expected := mac.Sum(nil)
-	if !hmac.Equal(signature, expected) {
-		return "", false, false
-	}
-
-	return userID, true, userID != ""
 }

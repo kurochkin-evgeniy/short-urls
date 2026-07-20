@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"short-urls/internal/auth"
 	"short-urls/internal/logging"
 	"testing"
 
@@ -33,8 +34,7 @@ func TestUserIDFromContextEmpty(t *testing.T) {
 }
 
 func TestUserCookieFlags(t *testing.T) {
-	ctx := context.WithValue(context.Background(), userCookieSeenContext, true)
-	ctx = context.WithValue(ctx, userCookieNoIDContext, true)
+	ctx := auth.ContextWithUserID(context.Background(), "", true, true)
 
 	assert.True(t, UserCookieWasPresent(ctx))
 	assert.True(t, UserCookieHasNoID(ctx))

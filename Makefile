@@ -1,3 +1,9 @@
+.PHONY: proto
+proto:
+	protoc --proto_path=api --proto_path=$$(go list -m -f "{{.Dir}}" google.golang.org/protobuf) \
+		--go_out=paths=source_relative:pkg/shortenerv1 \
+		--go-grpc_out=paths=source_relative:pkg/shortenerv1 \
+		api/shortener.proto
 
 .PHONY: staticlint
 staticlint:
