@@ -2,8 +2,9 @@ package service
 
 import (
 	"fmt"
-	"short-urls/internal/repository"
 	"testing"
+
+	"short-urls/internal/repository"
 )
 
 func BenchmarkCreateShortUrl(b *testing.B) {

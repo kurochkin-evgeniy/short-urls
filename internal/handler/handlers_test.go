@@ -9,16 +9,17 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"short-urls/internal/facade"
-	"short-urls/internal/middleware"
-	"short-urls/internal/repository"
-	"short-urls/internal/service"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"short-urls/internal/facade"
+	"short-urls/internal/middleware"
+	"short-urls/internal/repository"
+	"short-urls/internal/service"
 )
 
 func Test_handleCreateShortUrl(t *testing.T) {

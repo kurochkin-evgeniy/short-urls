@@ -4,12 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"short-urls/internal/auth"
-	"short-urls/internal/logging"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"short-urls/internal/auth"
+	"short-urls/internal/logging"
 )
 
 func TestAuthMiddlewareSetsUserID(t *testing.T) {

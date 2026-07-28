@@ -4,12 +4,13 @@ import (
 	"database/sql"
 	"embed"
 	"errors"
-	"short-urls/internal/logging"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/lib/pq"
+
+	"short-urls/internal/logging"
 )
 
 //go:embed migrations/*.sql

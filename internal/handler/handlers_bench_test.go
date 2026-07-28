@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"testing"
+
 	"short-urls/internal/facade"
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
-	"strings"
-	"testing"
 )
 
 func BenchmarkHandleCreateShortUrl(b *testing.B) {

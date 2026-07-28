@@ -13,26 +13,26 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	chi_m "github.com/go-chi/chi/v5/middleware"
+	_ "github.com/lib/pq"
+	"github.com/soheilhy/cmux"
+	"google.golang.org/grpc"
+
+	"short-urls/internal/audit"
 	"short-urls/internal/config"
 	"short-urls/internal/facade"
 	"short-urls/internal/grpchandler"
 	"short-urls/internal/grpcmiddleware"
 	"short-urls/internal/handler"
 	"short-urls/internal/logging"
+	"short-urls/internal/middleware"
 	"short-urls/internal/repository"
 	"short-urls/internal/service"
-	"syscall"
-	"time"
-
-	"short-urls/internal/audit"
-	"short-urls/internal/middleware"
 	"short-urls/pkg/shortenerv1"
-
-	"github.com/go-chi/chi/v5"
-	chi_m "github.com/go-chi/chi/v5/middleware"
-	"github.com/soheilhy/cmux"
-	_ "github.com/lib/pq"
-	"google.golang.org/grpc"
 )
 
 const shutdownTimeout = 30 * time.Second

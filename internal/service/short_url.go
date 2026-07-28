@@ -3,11 +3,12 @@ package service
 
 import (
 	"math/rand"
+	"strings"
+	"time"
+
 	"short-urls/internal/audit"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
-	"strings"
-	"time"
 )
 
 // ShortUrlService координирует хранилище, генерацию URL и уведомления аудита.

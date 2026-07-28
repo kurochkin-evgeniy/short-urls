@@ -6,11 +6,12 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"short-urls/internal/auth"
-	"short-urls/internal/logging"
 	"time"
 
 	"github.com/go-chi/chi/middleware"
+
+	"short-urls/internal/auth"
+	"short-urls/internal/logging"
 )
 
 const userCookieName = "user_token"

@@ -2,99 +2,62 @@
 
 package handler
 
-
-
 import (
-
 	"context"
-
 	"database/sql"
-
 	"encoding/json"
-
 	"errors"
-
 	"io"
-
 	"net/http"
-
-	"short-urls/internal/facade"
-
-	"short-urls/internal/logging"
-
 	"time"
 
+	"short-urls/internal/facade"
+	"short-urls/internal/logging"
 )
-
-
 
 // CreateShortUrlRequest — тело JSON-запроса для POST /api/shorten.
 
 type CreateShortUrlRequest struct {
-
 	Url string `json:"url,omitempty"`
-
 }
-
-
 
 // CreateShortUrlResponse — тело JSON-ответа для POST /api/shorten.
 
 type CreateShortUrlResponse struct {
-
 	Result string `json:"result,omitempty"`
-
 }
-
-
 
 // BatchShortUrlRequest описывает один элемент пакетного запроса на сокращение.
 
 type BatchShortUrlRequest struct {
-
 	CorrelationID string `json:"correlation_id"`
 
-	OriginalURL   string `json:"original_url"`
-
+	OriginalURL string `json:"original_url"`
 }
-
-
 
 // BatchShortUrlResponse описывает один элемент пакетного ответа.
 
 type BatchShortUrlResponse struct {
-
 	CorrelationID string `json:"correlation_id"`
 
-	ShortURL      string `json:"short_url"`
-
+	ShortURL string `json:"short_url"`
 }
-
-
 
 // UserURLResponse описывает пару URL, возвращаемую GET /api/user/urls.
 
 type UserURLResponse struct {
-
-	ShortURL    string `json:"short_url"`
+	ShortURL string `json:"short_url"`
 
 	OriginalURL string `json:"original_url"`
-
 }
-
-
 
 // StatsResponse — тело JSON-ответа для GET /api/internal/stats.
 
 type StatsResponse struct {
-
-	URLs  int `json:"urls"`
+	URLs int `json:"urls"`
 
 	Users int `json:"users"`
-
 }
-
-
 
 func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, f *facade.Shortener) {
 
@@ -154,13 +117,9 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, f
 
 				}
 
-
-
 				var resp CreateShortUrlResponse
 
 				resp.Result = shortURL
-
-
 
 				respStr, err := json.Marshal(resp)
 
@@ -171,8 +130,6 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, f
 					return
 
 				}
-
-
 
 				responce.Header().Set("content-type", "application/json")
 
@@ -194,13 +151,9 @@ func handleCreateShortUrl(responce http.ResponseWriter, request *http.Request, f
 
 	}
 
-
-
 	responce.WriteHeader(http.StatusBadRequest)
 
 }
-
-
 
 func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Request, f *facade.Shortener) {
 
@@ -214,8 +167,6 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 
 	}
 
-
-
 	var batchReq []BatchShortUrlRequest
 
 	if unmarshalErr := json.Unmarshal(body, &batchReq); unmarshalErr != nil {
@@ -226,8 +177,6 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 
 	}
 
-
-
 	if len(batchReq) == 0 {
 
 		responce.WriteHeader(http.StatusBadRequest)
@@ -236,8 +185,6 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 
 	}
 
-
-
 	urls := make([]string, 0, len(batchReq))
 
 	for _, item := range batchReq {
@@ -245,8 +192,6 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 		urls = append(urls, item.OriginalURL)
 
 	}
-
-
 
 	createResults, err := f.CreateBatchShortUrls(request.Context(), urls)
 
@@ -268,13 +213,10 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 
 			CorrelationID: item.CorrelationID,
 
-			ShortURL:      createResults[i],
-
+			ShortURL: createResults[i],
 		})
 
 	}
-
-
 
 	respBody, err := json.Marshal(batchResp)
 
@@ -286,8 +228,6 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 
 	}
 
-
-
 	responce.Header().Set("content-type", "application/json")
 
 	responce.WriteHeader(http.StatusCreated)
@@ -295,8 +235,6 @@ func handleCreateBatchShortUrl(responce http.ResponseWriter, request *http.Reque
 	responce.Write(respBody)
 
 }
-
-
 
 func handleGetUserURLs(responce http.ResponseWriter, request *http.Request, f *facade.Shortener) {
 
@@ -328,23 +266,18 @@ func handleGetUserURLs(responce http.ResponseWriter, request *http.Request, f *f
 
 	}
 
-
-
 	result := make([]UserURLResponse, 0, len(userURLs))
 
 	for _, item := range userURLs {
 
 		result = append(result, UserURLResponse{
 
-			ShortURL:    item.ShortURL,
+			ShortURL: item.ShortURL,
 
 			OriginalURL: item.OriginalURL,
-
 		})
 
 	}
-
-
 
 	body, err := json.Marshal(result)
 
@@ -363,8 +296,6 @@ func handleGetUserURLs(responce http.ResponseWriter, request *http.Request, f *f
 	responce.Write(body)
 
 }
-
-
 
 func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, f *facade.Shortener) {
 
@@ -400,8 +331,6 @@ func handleRedirectUrl(responce http.ResponseWriter, request *http.Request, f *f
 
 }
 
-
-
 func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, f *facade.Shortener) {
 
 	body, err := io.ReadAll(request.Body)
@@ -414,8 +343,6 @@ func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, f
 
 	}
 
-
-
 	var shortIDs []string
 
 	if err := json.Unmarshal(body, &shortIDs); err != nil {
@@ -426,8 +353,6 @@ func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, f
 
 	}
 
-
-
 	if len(shortIDs) == 0 {
 
 		responce.WriteHeader(http.StatusBadRequest)
@@ -435,8 +360,6 @@ func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, f
 		return
 
 	}
-
-
 
 	if err := f.QueueUserURLsDeletion(request.Context(), shortIDs); err != nil {
 
@@ -458,8 +381,6 @@ func handleDeleteUserURLs(responce http.ResponseWriter, request *http.Request, f
 
 }
 
-
-
 // HandleRedirectRequest обрабатывает GET /{id} и перенаправляет на оригинальный URL.
 
 func HandleRedirectRequest(f *facade.Shortener) http.HandlerFunc {
@@ -471,8 +392,6 @@ func HandleRedirectRequest(f *facade.Shortener) http.HandlerFunc {
 	}
 
 }
-
-
 
 // HandleCreateShortUrRequest обрабатывает POST / и POST /api/shorten.
 
@@ -486,8 +405,6 @@ func HandleCreateShortUrRequest(f *facade.Shortener) http.HandlerFunc {
 
 }
 
-
-
 // HandleCreateBatchShortUrRequest обрабатывает POST /api/shorten/batch.
 
 func HandleCreateBatchShortUrRequest(f *facade.Shortener) http.HandlerFunc {
@@ -499,8 +416,6 @@ func HandleCreateBatchShortUrRequest(f *facade.Shortener) http.HandlerFunc {
 	}
 
 }
-
-
 
 // HandleGetUserURLsRequest обрабатывает GET /api/user/urls.
 
@@ -514,8 +429,6 @@ func HandleGetUserURLsRequest(f *facade.Shortener) http.HandlerFunc {
 
 }
 
-
-
 // HandleDeleteUserURLsRequest обрабатывает DELETE /api/user/urls.
 
 func HandleDeleteUserURLsRequest(f *facade.Shortener) http.HandlerFunc {
@@ -527,8 +440,6 @@ func HandleDeleteUserURLsRequest(f *facade.Shortener) http.HandlerFunc {
 	}
 
 }
-
-
 
 // HandlePing обрабатывает GET /ping и проверяет доступность PostgreSQL.
 
@@ -546,15 +457,11 @@ func HandlePing(db *sql.DB) http.HandlerFunc {
 
 		}
 
-
-
 		logging.Sugar.Debugw("Checking PostgreSQL health with ping")
 
 		ctx, cancel := context.WithTimeout(request.Context(), 2*time.Second)
 
 		defer cancel()
-
-
 
 		if err := db.PingContext(ctx); err != nil {
 
@@ -566,8 +473,6 @@ func HandlePing(db *sql.DB) http.HandlerFunc {
 
 		}
 
-
-
 		logging.Sugar.Debugw("PostgreSQL ping succeeded")
 
 		responce.WriteHeader(http.StatusOK)
@@ -575,8 +480,6 @@ func HandlePing(db *sql.DB) http.HandlerFunc {
 	}
 
 }
-
-
 
 func handleGetStats(responce http.ResponseWriter, request *http.Request, f *facade.Shortener) {
 
@@ -592,14 +495,11 @@ func handleGetStats(responce http.ResponseWriter, request *http.Request, f *faca
 
 	}
 
-
-
 	body, err := json.Marshal(StatsResponse{
 
-		URLs:  stats.URLs,
+		URLs: stats.URLs,
 
 		Users: stats.Users,
-
 	})
 
 	if err != nil {
@@ -610,8 +510,6 @@ func handleGetStats(responce http.ResponseWriter, request *http.Request, f *faca
 
 	}
 
-
-
 	responce.Header().Set("content-type", "application/json")
 
 	responce.WriteHeader(http.StatusOK)
@@ -619,8 +517,6 @@ func handleGetStats(responce http.ResponseWriter, request *http.Request, f *faca
 	responce.Write(body)
 
 }
-
-
 
 // HandleGetStatsRequest обрабатывает GET /api/internal/stats.
 
@@ -633,4 +529,3 @@ func HandleGetStatsRequest(f *facade.Shortener) http.HandlerFunc {
 	}
 
 }
-
