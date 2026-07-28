@@ -177,16 +177,21 @@ func (a *ShortUrlApp) Start() error {
 	var runErr error
 	select {
 	case runErr = <-serverErrors:
-		logging.Sugar.Errorw("Server stopped with error", "error", runErr)
+		logging.Sugar.Errorw("Server stopped with error, initiating shutdown", "error", runErr)
 	case sig := <-quit:
 		logging.Sugar.Infow("Shutdown signal received", "signal", sig.String())
 	}
 
+	// Shutdown и при сигнале ОС, и при ошибке одного из серверов —
+	// иначе оставшиеся HTTP/gRPC/cmux продолжат принимать соединения.
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	if err := a.Shutdown(ctx); err != nil && runErr == nil {
-		return err
+	if err := a.Shutdown(ctx); err != nil {
+		if runErr == nil {
+			return err
+		}
+		logging.Sugar.Errorw("Shutdown failed after server error", "error", err)
 	}
 	return runErr
 }
