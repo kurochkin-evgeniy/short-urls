@@ -106,7 +106,9 @@ func TrustedSubnetMiddleware(trustedSubnet string) func(http.Handler) http.Handl
 	var trustedNet *net.IPNet
 	if trustedSubnet != "" {
 		_, parsed, err := net.ParseCIDR(trustedSubnet)
-		if err == nil {
+		if err != nil {
+			logging.Sugar.Errorf("failed to parse trusted subnet CIDR %q: %v", trustedSubnet, err)
+		} else {
 			trustedNet = parsed
 		}
 	}
