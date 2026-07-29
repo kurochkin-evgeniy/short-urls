@@ -78,3 +78,24 @@ func TestMapKeyValueStorageLookupMissing(t *testing.T) {
 	assert.False(t, found)
 	assert.False(t, deleted)
 }
+
+func TestMapKeyValueStorageGetStats(t *testing.T) {
+	storage := NewMapKeyValueStorage()
+
+	stats, err := storage.GetStats()
+	require.NoError(t, err)
+	assert.Equal(t, 0, stats.URLs)
+	assert.Equal(t, 0, stats.Users)
+
+	_, _, err = storage.InsertNewValue("url001", "https://example.com/1", "user-1")
+	require.NoError(t, err)
+	_, _, err = storage.InsertNewValue("url002", "https://example.com/2", "user-1")
+	require.NoError(t, err)
+	_, _, err = storage.InsertNewValue("url003", "https://example.com/3", "user-2")
+	require.NoError(t, err)
+
+	stats, err = storage.GetStats()
+	require.NoError(t, err)
+	assert.Equal(t, 3, stats.URLs)
+	assert.Equal(t, 2, stats.Users)
+}

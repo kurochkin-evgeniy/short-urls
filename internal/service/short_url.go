@@ -3,11 +3,12 @@ package service
 
 import (
 	"math/rand"
+	"strings"
+	"time"
+
 	"short-urls/internal/audit"
 	"short-urls/internal/logging"
 	"short-urls/internal/repository"
-	"strings"
-	"time"
 )
 
 // ShortUrlService координирует хранилище, генерацию URL и уведомления аудита.
@@ -200,6 +201,11 @@ func (s *ShortUrlService) GetUserURLs(userID string) ([]repository.UserURL, erro
 	}
 
 	return result, nil
+}
+
+// GetStats возвращает количество сокращённых URL и пользователей в сервисе.
+func (s *ShortUrlService) GetStats() (repository.Stats, error) {
+	return s.storage.GetStats()
 }
 
 func (s *ShortUrlService) buildShortURL(id string) string {

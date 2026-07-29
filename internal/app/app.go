@@ -1,30 +1,38 @@
-// Package app связывает конфигурацию, хранилище, обработчики и HTTP-сервер.
+// Package app связывает конфигурацию, хранилище, обработчики и HTTP/gRPC-серверы.
 package app
 
 import (
 	"compress/flate"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"short-urls/internal/config"
-	"short-urls/internal/handler"
-	"short-urls/internal/logging"
-	"short-urls/internal/repository"
-	"short-urls/internal/service"
 	"syscall"
 	"time"
-
-	"short-urls/internal/audit"
-	"short-urls/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
 	chi_m "github.com/go-chi/chi/v5/middleware"
 	_ "github.com/lib/pq"
+	"github.com/soheilhy/cmux"
+	"google.golang.org/grpc"
+
+	"short-urls/internal/audit"
+	"short-urls/internal/config"
+	"short-urls/internal/facade"
+	"short-urls/internal/grpchandler"
+	"short-urls/internal/grpcmiddleware"
+	"short-urls/internal/handler"
+	"short-urls/internal/logging"
+	"short-urls/internal/middleware"
+	"short-urls/internal/repository"
+	"short-urls/internal/service"
+	"short-urls/pkg/shortenerv1"
 )
 
 const shutdownTimeout = 30 * time.Second
@@ -33,7 +41,11 @@ const shutdownTimeout = 30 * time.Second
 type ShortUrlApp struct {
 	cfg             *config.Config
 	shortUrlService *service.ShortUrlService
+	shortenerFacade *facade.Shortener
 	srv             *http.Server
+	grpcSrv         *grpc.Server
+	listener        net.Listener
+	srvMux          cmux.CMux
 	storage         repository.KeyValueStorage
 	auditSubject    *audit.Subject
 	db              *sql.DB
@@ -50,7 +62,7 @@ func NewShortUrlApp() (*ShortUrlApp, error) {
 	}, nil
 }
 
-// Start собирает зависимости, регистрирует маршруты и запускает HTTP-сервер.
+// Start собирает зависимости, регистрирует маршруты и запускает HTTP/gRPC-серверы.
 func (a *ShortUrlApp) Start() error {
 	logging.LoggingInit()
 	defer logging.LoggingDone()
@@ -78,6 +90,7 @@ func (a *ShortUrlApp) Start() error {
 	logging.Sugar.Debugw("Initializing short URL service")
 	a.auditSubject = audit.NewSubjectFromConfig(a.cfg.AuditFile, a.cfg.AuditURL)
 	a.shortUrlService = service.NewShortUrlService(a.cfg.BaseUrl, a.storage, a.auditSubject)
+	a.shortenerFacade = facade.New(a.shortUrlService)
 
 	logging.Sugar.Debugw("Configuring HTTP router")
 	r := chi.NewRouter()
@@ -89,35 +102,71 @@ func (a *ShortUrlApp) Start() error {
 	r.Use(middleware.DecompressRequestMiddleware)
 	r.Use(middleware.AuthMiddleware(a.cfg.CookieSecret))
 
-	r.Post("/", handler.HandleCreateShortUrRequest(a.shortUrlService))
-	r.Post("/api/shorten", handler.HandleCreateShortUrRequest(a.shortUrlService))
-	r.Post("/api/shorten/batch", handler.HandleCreateBatchShortUrRequest(a.shortUrlService))
-	r.Get("/api/user/urls", handler.HandleGetUserURLsRequest(a.shortUrlService))
-	r.Delete("/api/user/urls", handler.HandleDeleteUserURLsRequest(a.shortUrlService))
-	r.Get("/{id}", handler.HandleRedirectRequest(a.shortUrlService))
+	r.Post("/", handler.HandleCreateShortUrRequest(a.shortenerFacade))
+	r.Post("/api/shorten", handler.HandleCreateShortUrRequest(a.shortenerFacade))
+	r.Post("/api/shorten/batch", handler.HandleCreateBatchShortUrRequest(a.shortenerFacade))
+	r.Get("/api/user/urls", handler.HandleGetUserURLsRequest(a.shortenerFacade))
+	r.Delete("/api/user/urls", handler.HandleDeleteUserURLsRequest(a.shortenerFacade))
+	r.With(middleware.TrustedSubnetMiddleware(a.cfg.TrustedSubnet)).Get(
+		"/api/internal/stats",
+		handler.HandleGetStatsRequest(a.shortenerFacade),
+	)
+	r.Get("/{id}", handler.HandleRedirectRequest(a.shortenerFacade))
 	r.Get("/ping", handler.HandlePing(a.db))
 
 	a.srv = &http.Server{
-		Addr:    a.cfg.HostAddr,
 		Handler: r,
 	}
 
-	serverErrors := make(chan error, 1)
+	a.grpcSrv = grpc.NewServer(
+		grpc.UnaryInterceptor(grpcmiddleware.AuthUnaryInterceptor(a.cfg.CookieSecret)),
+	)
+	shortenerv1.RegisterShortenerServiceServer(a.grpcSrv, grpchandler.NewShortenerServer(a.shortenerFacade))
+
+	listener, err := net.Listen("tcp", a.cfg.HostAddr)
+	if err != nil {
+		logging.Sugar.Errorw("Failed to start listener", "error", err)
+		return fmt.Errorf("listen: %w", err)
+	}
+	if a.cfg.EnableHTTPS {
+		cert, err := tls.LoadX509KeyPair(a.cfg.TLSCertFile, a.cfg.TLSKeyFile)
+		if err != nil {
+			listener.Close()
+			return fmt.Errorf("load tls certificate: %w", err)
+		}
+		listener = tls.NewListener(listener, &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			NextProtos:   []string{"h2", "http/1.1"},
+		})
+	}
+
+	a.listener = listener
+	a.srvMux = cmux.New(listener)
+	grpcListener := a.srvMux.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
+	httpListener := a.srvMux.Match(cmux.Any())
+
+	serverErrors := make(chan error, 3)
+	go func() {
+		if err := a.grpcSrv.Serve(grpcListener); err != nil {
+			serverErrors <- err
+		}
+	}()
+	go func() {
+		if err := a.srv.Serve(httpListener); err != nil && err != http.ErrServerClosed && err != cmux.ErrListenerClosed {
+			serverErrors <- err
+		}
+	}()
 	go func() {
 		if a.cfg.EnableHTTPS {
-			logging.Sugar.Infow("HTTPS server is starting",
+			logging.Sugar.Infow("HTTPS/gRPC server is starting",
 				"address", a.cfg.HostAddr,
 				"cert", a.cfg.TLSCertFile,
 				"key", a.cfg.TLSKeyFile,
 			)
-			if err := a.srv.ListenAndServeTLS(a.cfg.TLSCertFile, a.cfg.TLSKeyFile); err != nil && err != http.ErrServerClosed {
-				serverErrors <- err
-			}
-			return
+		} else {
+			logging.Sugar.Infow("HTTP/gRPC server is starting", "address", a.cfg.HostAddr)
 		}
-
-		logging.Sugar.Infow("HTTP server is starting", "address", a.cfg.HostAddr)
-		if err := a.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := a.srvMux.Serve(); err != nil && err != cmux.ErrListenerClosed {
 			serverErrors <- err
 		}
 	}()
@@ -128,22 +177,31 @@ func (a *ShortUrlApp) Start() error {
 	var runErr error
 	select {
 	case runErr = <-serverErrors:
-		logging.Sugar.Errorw("Server stopped with error", "error", runErr)
+		logging.Sugar.Errorw("Server stopped with error, initiating shutdown", "error", runErr)
 	case sig := <-quit:
 		logging.Sugar.Infow("Shutdown signal received", "signal", sig.String())
 	}
 
+	// Shutdown и при сигнале ОС, и при ошибке одного из серверов —
+	// иначе оставшиеся HTTP/gRPC/cmux продолжат принимать соединения.
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	if err := a.Shutdown(ctx); err != nil && runErr == nil {
-		return err
+	if err := a.Shutdown(ctx); err != nil {
+		if runErr == nil {
+			return err
+		}
+		logging.Sugar.Errorw("Shutdown failed after server error", "error", err)
 	}
 	return runErr
 }
 
-// Shutdown останавливает HTTP-сервер и освобождает ресурсы приложения.
+// Shutdown останавливает HTTP/gRPC-серверы и освобождает ресурсы приложения.
 func (a *ShortUrlApp) Shutdown(ctx context.Context) error {
+	if a.grpcSrv != nil {
+		a.grpcSrv.GracefulStop()
+	}
+
 	if a.srv != nil {
 		if err := a.srv.Shutdown(ctx); err != nil {
 			logging.Sugar.Errorw("Server graceful shutdown failed", "error", err)
@@ -151,7 +209,14 @@ func (a *ShortUrlApp) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	logging.Sugar.Infow("HTTP server stopped, draining background workers")
+	if a.srvMux != nil {
+		a.srvMux.Close()
+	}
+	if a.listener != nil {
+		a.listener.Close()
+	}
+
+	logging.Sugar.Infow("HTTP/gRPC servers stopped, draining background workers")
 	if a.shortUrlService != nil {
 		a.shortUrlService.Shutdown()
 	}

@@ -24,6 +24,7 @@ func TestNewConfigDefaults(t *testing.T) {
 	os.Unsetenv("ENABLE_HTTPS")
 	os.Unsetenv("TLS_CERT_FILE")
 	os.Unsetenv("TLS_KEY_FILE")
+	os.Unsetenv("TRUSTED_SUBNET")
 	os.Unsetenv("CONFIG")
 
 	cfg, err := NewConfig()
@@ -31,6 +32,7 @@ func TestNewConfigDefaults(t *testing.T) {
 	assert.Equal(t, "localhost:8080", cfg.HostAddr)
 	assert.Equal(t, "http://localhost:8080", cfg.BaseUrl)
 	assert.False(t, cfg.EnableHTTPS)
+	assert.Empty(t, cfg.TrustedSubnet)
 }
 
 func TestNewConfigEnvOverride(t *testing.T) {
@@ -41,6 +43,7 @@ func TestNewConfigEnvOverride(t *testing.T) {
 	t.Setenv("ENABLE_HTTPS", "true")
 	t.Setenv("TLS_CERT_FILE", "/tmp/cert.pem")
 	t.Setenv("TLS_KEY_FILE", "/tmp/key.pem")
+	t.Setenv("TRUSTED_SUBNET", "10.0.0.0/8")
 
 	cfg, err := NewConfig()
 	require.NoError(t, err)
@@ -50,6 +53,7 @@ func TestNewConfigEnvOverride(t *testing.T) {
 	assert.True(t, cfg.EnableHTTPS)
 	assert.Equal(t, "/tmp/cert.pem", cfg.TLSCertFile)
 	assert.Equal(t, "/tmp/key.pem", cfg.TLSKeyFile)
+	assert.Equal(t, "10.0.0.0/8", cfg.TrustedSubnet)
 }
 
 func TestNewConfigFromFile(t *testing.T) {
@@ -58,6 +62,7 @@ func TestNewConfigFromFile(t *testing.T) {
 	os.Unsetenv("SERVER_ADDRESS")
 	os.Unsetenv("BASE_URL")
 	os.Unsetenv("ENABLE_HTTPS")
+	os.Unsetenv("TRUSTED_SUBNET")
 
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	err := os.WriteFile(configPath, []byte(`{
@@ -70,7 +75,8 @@ func TestNewConfigFromFile(t *testing.T) {
 		"audit_url": "http://audit.local/log",
 		"enable_https": true,
 		"tls_cert_file": "/tmp/cert.pem",
-		"tls_key_file": "/tmp/key.pem"
+		"tls_key_file": "/tmp/key.pem",
+		"trusted_subnet": "192.168.0.0/24"
 	}`), 0o600)
 	require.NoError(t, err)
 
@@ -90,6 +96,7 @@ func TestNewConfigFromFile(t *testing.T) {
 	assert.True(t, cfg.EnableHTTPS)
 	assert.Equal(t, "/tmp/cert.pem", cfg.TLSCertFile)
 	assert.Equal(t, "/tmp/key.pem", cfg.TLSKeyFile)
+	assert.Equal(t, "192.168.0.0/24", cfg.TrustedSubnet)
 }
 
 func TestNewConfigFileOverriddenByEnv(t *testing.T) {
@@ -164,4 +171,17 @@ func TestNewConfigFromEnvConfigPath(t *testing.T) {
 	cfg, err := NewConfig()
 	require.NoError(t, err)
 	assert.Equal(t, "127.0.0.1:7070", cfg.HostAddr)
+}
+
+func TestNewConfigTrustedSubnetFlag(t *testing.T) {
+	resetFlags(t)
+	os.Unsetenv("TRUSTED_SUBNET")
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = []string{"shortener", "-t", "172.16.0.0/12"}
+
+	cfg, err := NewConfig()
+	require.NoError(t, err)
+	assert.Equal(t, "172.16.0.0/12", cfg.TrustedSubnet)
 }

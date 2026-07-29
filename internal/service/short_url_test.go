@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"short-urls/internal/repository"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"short-urls/internal/repository"
 )
 
 func TestCreateShortUrl(t *testing.T) {
@@ -102,4 +102,17 @@ func TestShutdownFlushesPendingDeletions(t *testing.T) {
 func TestBuildShortURL(t *testing.T) {
 	s := NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
 	assert.Equal(t, "http://localhost:8080/abc123", s.buildShortURL("abc123"))
+}
+
+func TestGetStats(t *testing.T) {
+	s := NewShortUrlService("http://localhost:8080", repository.NewMapKeyValueStorage())
+	_, err := s.CreateShortUrl("https://example.com/a", "user-a")
+	require.NoError(t, err)
+	_, err = s.CreateShortUrl("https://example.com/b", "user-b")
+	require.NoError(t, err)
+
+	stats, err := s.GetStats()
+	require.NoError(t, err)
+	assert.Equal(t, 2, stats.URLs)
+	assert.Equal(t, 2, stats.Users)
 }

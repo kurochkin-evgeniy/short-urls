@@ -4,8 +4,9 @@ package repository
 import (
 	"encoding/json"
 	"os"
-	"short-urls/internal/logging"
 	"sync"
+
+	"short-urls/internal/logging"
 )
 
 // KeyValueStorage сохраняет и извлекает соответствия коротких URL.
@@ -15,6 +16,13 @@ type KeyValueStorage interface {
 	LookupShortURL(key string) (originalURL string, isDeleted bool, found bool)
 	GetUserURLs(userID string) ([]UserURL, error)
 	MarkURLsDeletedBatch(userID string, shortURLs []string) error
+	GetStats() (Stats, error)
+}
+
+// Stats содержит агрегированную статистику сервиса.
+type Stats struct {
+	URLs  int
+	Users int
 }
 
 // BatchInsertItem описывает одну запись в пакетной операции вставки.
@@ -175,6 +183,16 @@ func (s *MapKeyValueStorage) GetUserURLs(userID string) ([]UserURL, error) {
 	}
 
 	return result, nil
+}
+
+func (s *MapKeyValueStorage) GetStats() (Stats, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return Stats{
+		URLs:  len(s.maps.dict),
+		Users: len(s.maps.userKeys),
+	}, nil
 }
 
 func (s *MapKeyValueStorage) loadFromFile() {

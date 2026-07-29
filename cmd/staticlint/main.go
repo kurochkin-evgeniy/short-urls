@@ -84,8 +84,6 @@
 package main
 
 import (
-	"short-urls/cmd/staticlint/exitcheck"
-
 	"github.com/timakin/bodyclose/passes/bodyclose"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/multichecker"
@@ -139,6 +137,8 @@ import (
 	"honnef.co/go/tools/staticcheck"
 	"honnef.co/go/tools/stylecheck"
 	"honnef.co/go/tools/unused"
+
+	"short-urls/cmd/staticlint/exitcheck"
 )
 
 func main() {

@@ -4,12 +4,13 @@ import (
 	"database/sql"
 	"embed"
 	"errors"
-	"short-urls/internal/logging"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/lib/pq"
+
+	"short-urls/internal/logging"
 )
 
 //go:embed migrations/*.sql
@@ -161,6 +162,20 @@ WHERE user_id = $1
 	}
 
 	return result, nil
+}
+
+func (s *PostgresKeyValueStorage) GetStats() (Stats, error) {
+	const query = `
+SELECT
+    COUNT(*)::int AS urls,
+    COUNT(DISTINCT user_id)::int AS users
+FROM short_urls`
+
+	var stats Stats
+	if err := s.db.QueryRow(query).Scan(&stats.URLs, &stats.Users); err != nil {
+		return Stats{}, err
+	}
+	return stats, nil
 }
 
 // RunPostgresMigrations применяет встроенные SQL-миграции к базе данных.
